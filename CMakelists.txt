@@ -68,6 +68,8 @@ if (NOT EXISTS ${GLAD_C_FILE})
     e coloque glad.h em include/glad/ e glad.c em common/")
 endif()
 
+# Todos os PNGs de assets/ (re-verificado a cada build graças ao CONFIGURE_DEPENDS)
+file(GLOB GAME_ASSETS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/assets/*.png")
 # Cria os executáveis (um por diretório listado em EXERCISES)
 foreach(EXERCISE ${EXERCISES})
     # Extrai o nome da pasta como nome do executável
@@ -93,6 +95,11 @@ foreach(EXERCISE ${EXERCISES})
     "${CMAKE_SOURCE_DIR}/assets/rain.png"
     "$<TARGET_FILE_DIR:${EXE_NAME}>/rain.png"
     )
+    if(GAME_ASSETS)
+        add_custom_command(TARGET ${EXE_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${GAME_ASSETS} "$<TARGET_FILE_DIR:${EXE_NAME}>")
+    endif()
 
     target_link_libraries(${EXE_NAME} glfw ${OPENGL_LIBS} glm::glm )
 endforeach()

@@ -621,7 +621,7 @@ int main()
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "OpenGL - Rain Attack", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "OpenGL - PokeRune", nullptr, nullptr);
     if (!window)
     {
         cerr << "Could not create GLFW window" << endl;
