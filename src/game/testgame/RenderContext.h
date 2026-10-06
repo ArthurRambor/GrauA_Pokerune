@@ -50,7 +50,33 @@ inline void drawRect(const RenderContext& ctx, float x, float y, float width,
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
-// Equivalente a antiga drawSprite(...) do testgame.
+// Desenha um quad texturizado usando diretamente um retangulo de UV
+// (u0,v0)-(u1,v1), em fracao da textura (0..1). Base de drawSpriteCtx e de
+// drawEnemy (que usa retangulos em pixels, sem depender de uma grade fixa).
+inline void drawSpriteUv(const RenderContext& ctx, GLuint texture, float x, float y,
+                          float width, float height, float u0, float v0, float u1, float v1,
+                          bool useChromaKey,
+                          float keyR = 199.0f / 255.0f, float keyG = 225.0f / 255.0f,
+                          float keyB = 209.0f / 255.0f)
+{
+    const GLfloat uv[] = { u0, v0, u1, v1 };
+
+    glUseProgram(ctx.spriteShader);
+    glUniformMatrix4fv(ctx.spriteProjectionLoc, 1, GL_FALSE, ctx.projection);
+    glUniform2f(ctx.spritePositionLoc, x, y);
+    glUniform2f(ctx.spriteSizeLoc, width, height);
+    glUniform4fv(ctx.spriteUvLoc, 1, uv);
+    glUniform1i(ctx.textureLoc, 0);
+    glUniform1i(ctx.chromaKeyLoc, useChromaKey ? GL_TRUE : GL_FALSE);
+    glUniform3f(ctx.chromaKeyColorLoc, keyR, keyG, keyB);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glBindVertexArray(ctx.quadVao);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+}
+
+// Equivalente a antiga drawSprite(...) do testgame (sprite sheet em grade).
 inline void drawSpriteCtx(const RenderContext& ctx, GLuint texture, float x, float y,
                            float width, float height, int columns, int rows, int frame,
                            float regionWidth, float regionHeight, bool useChromaKey)
@@ -60,26 +86,9 @@ inline void drawSpriteCtx(const RenderContext& ctx, GLuint texture, float x, flo
     const int row = safeFrame / columns;
     const float frameWidth = regionWidth / columns;
     const float frameHeight = regionHeight / rows;
-    const GLfloat uv[] = {
-        column * frameWidth,
-        row * frameHeight,
-        (column + 1) * frameWidth,
-        (row + 1) * frameHeight
-    };
-
-    glUseProgram(ctx.spriteShader);
-    glUniformMatrix4fv(ctx.spriteProjectionLoc, 1, GL_FALSE, ctx.projection);
-    glUniform2f(ctx.spritePositionLoc, x, y);
-    glUniform2f(ctx.spriteSizeLoc, width, height);
-    glUniform4fv(ctx.spriteUvLoc, 1, uv);
-    glUniform1i(ctx.textureLoc, 0);
-    glUniform1i(ctx.chromaKeyLoc, useChromaKey ? GL_TRUE : GL_FALSE);
-    glUniform3f(ctx.chromaKeyColorLoc, 199.0f / 255.0f, 225.0f / 255.0f, 209.0f / 255.0f);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glBindVertexArray(ctx.quadVao);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    drawSpriteUv(ctx, texture, x, y, width, height,
+                 column * frameWidth, row * frameHeight,
+                 (column + 1) * frameWidth, (row + 1) * frameHeight, useChromaKey);
 }
 
 // Desenha o contorno da arena (equivalente ao trecho de GL_LINES que ja

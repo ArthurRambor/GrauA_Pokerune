@@ -5,6 +5,7 @@
 
 #include "Button.h"
 #include "RenderContext.h"
+#include "Enemy.h"
 
 enum class Theme { LIGHT, DARK };
 
@@ -19,10 +20,10 @@ public:
     {
         GLuint fontTexture = 0; // atlas "font.png" (6x7), usado para titulo e labels
 
-        // EM ABERTO: hoje so existe o sprite do chinchou (rain.png/chinchou.png).
-        // Adicionar novas texturas de inimigo aqui para o seletor funcionar
-        // com mais de uma opcao.
-        std::vector<GLuint> enemyPreviewTextures;
+        // Lista de inimigos (chinchou, squirtle, froakie...). O carrossel
+        // usa o tamanho deste vetor, entao adicionar um EnemyDef novo no
+        // main() ja basta para ele aparecer no menu.
+        std::vector<EnemyDef> enemies;
     };
 
     void setup(const Assets& assets, std::function<void()> onPlay)
@@ -65,14 +66,14 @@ public:
         // um marcador interno ("<<ARROW_PREV>>"/"<<ARROW_NEXT>>") que o
         // render() reconhece para desenhar uma seta triangular em vez de
         // texto (a fonte nao tem simbolo de seta).
-        if (!m_assets.enemyPreviewTextures.empty())
+        if (!m_assets.enemies.empty())
         {
             m_buttons.push_back(Button{
                 -0.35f, -0.05f, 0.12f, 0.12f,
                 0.3f, 0.3f, 0.3f,
                 "<<ARROW_PREV>>",
                 [this]() {
-                    int count = static_cast<int>(m_assets.enemyPreviewTextures.size());
+                    int count = static_cast<int>(m_assets.enemies.size());
                     m_enemyIndex = (m_enemyIndex - 1 + count) % count;
                 }
             });
@@ -81,7 +82,7 @@ public:
                 0.3f, 0.3f, 0.3f,
                 "<<ARROW_NEXT>>",
                 [this]() {
-                    int count = static_cast<int>(m_assets.enemyPreviewTextures.size());
+                    int count = static_cast<int>(m_assets.enemies.size());
                     m_enemyIndex = (m_enemyIndex + 1) % count;
                 }
             });
@@ -114,15 +115,14 @@ public:
         // extra multiplicando o resultado da textura).
         drawTextCentered(ctx, m_assets.fontTexture, "RAIN ATTACK", 0.0f, 0.65f, 0.10f, 0.13f);
 
-        if (!m_assets.enemyPreviewTextures.empty())
+        if (!m_assets.enemies.empty())
         {
-            // A sprite sheet do chinchou (chinchou.png) tem uma grade real
-            // de 4 colunas x 4 linhas dentro da area util (240x183 de um
-            // arquivo 403x183 - o resto e credito/sprite shiny). So 12 das
-            // 16 celulas tem pose desenhada; o frame 0 (topo-esquerda) e
-            // uma pose completa e limpa, boa para preview estatico.
-            drawSpriteCtx(ctx, m_assets.enemyPreviewTextures[m_enemyIndex],
-                          0.0f, -0.05f, 0.3f, 0.3f, 4, 4, 0, 240.0f / 403.0f, 1.0f, true);
+            // Preview estatico: frame 0 (time = 0) do inimigo selecionado,
+            // mantendo a proporcao do sprite (altura fixa 0.3).
+            const EnemyDef& enemy = m_assets.enemies[m_enemyIndex];
+            const float previewHeight = 0.3f;
+            const float previewWidth = previewHeight * (enemy.width / enemy.height);
+            drawEnemy(ctx, enemy, 0.0f, 0.0f, -0.05f, previewWidth, previewHeight);
         }
 
         for (const Button& button : m_buttons)

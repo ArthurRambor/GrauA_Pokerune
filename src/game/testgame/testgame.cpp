@@ -14,6 +14,7 @@
 #include "RenderContext.h"
 #include "MenuScreen.h"
 #include "GameOverScreen.h"
+#include "Enemy.h"
 
 using namespace std;
 
@@ -377,7 +378,7 @@ double g_survivalTime = 0.0;
 
 // Texturas carregadas uma vez em main() e reaproveitadas pelas telas/jogo.
 GLuint g_heartTexture = 0;
-GLuint g_chinchouTexture = 0;
+vector<EnemyDef> g_enemies; // indice = MenuScreen::enemyIndex()
 GLuint g_rainTexture = 0;
 
 MenuScreen g_menuScreen;
@@ -543,17 +544,10 @@ void renderGame(const RenderContext& ctx)
 
     drawBoxOutline(ctx);
 
-    // Chinchou uses the 4x4 sprite grid at the left of its source image
-    // (240x183 de 403x183 - resto e credito/sprite shiny). So 12 das 16
-    // celulas tem pose desenhada; pulamos as 4 vazias (3, 5, 6, 7) para a
-    // animacao nao piscar em branco.
-    static constexpr int chinchouValidFrames[] = { 0, 1, 2, 4, 8, 9, 10, 11, 12, 13, 14, 15 };
-    static constexpr int chinchouFrameCount =
-        sizeof(chinchouValidFrames) / sizeof(chinchouValidFrames[0]);
-    const int chinchouAnimIndex = static_cast<int>(g_elapsedTime / 0.12f) % chinchouFrameCount;
-    const int chinchouFrame = chinchouValidFrames[chinchouAnimIndex];
-    drawSpriteCtx(ctx, g_chinchouTexture, 0.94f, 0.10f, 0.30f, 0.36f,
-                 4, 4, chinchouFrame, 240.0f / 403.0f, 1.0f, true);
+    // Inimigo escolhido no menu, com a animacao propria dele (grade,
+    // frames validos e velocidade definidos no EnemyDef).
+    const EnemyDef& enemy = g_enemies[g_menuScreen.enemyIndex()];
+    drawEnemy(ctx, enemy, g_elapsedTime, enemy.x, enemy.y, enemy.width, enemy.height);
 
     // Rain is rendered after the box so drops remain visible as they pass through it.
     for (const RainDrop& drop : g_rainDrops)
@@ -621,7 +615,7 @@ int main()
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "OpenGL - PokeRune", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "OpenGL - PokéRune", nullptr, nullptr);
     if (!window)
     {
         cerr << "Could not create GLFW window" << endl;
@@ -650,12 +644,55 @@ int main()
     GLuint triangleVao = setupTriangleGeometry();
 
     g_heartTexture = loadTexture("heart.png");
-    g_chinchouTexture = loadTexture("chinchou.png");
     g_rainTexture = loadTexture("rain.png");
 
-    if (g_heartTexture == 0 || g_chinchouTexture == 0 || g_rainTexture == 0)
+    // ---- Inimigos (um EnemyDef por boss) ----
+    // Todos os PNGs usam fundo 199,225,209 (chroma key padrao do EnemyDef).
+
+    // Chinchou: grade 4x4 na area util de 240x183 px (403x183 no total);
+    // so 12 das 16 celulas tem pose.
+    EnemyDef chinchou;
+    chinchou.name = "CHINCHOU";
+    chinchou.texture = loadTexture("chinchou.png");
+    chinchou.textureWidth = 403.0f; chinchou.textureHeight = 183.0f;
+    chinchou.frames = gridFrames(4, 4, 240.0f, 183.0f, { 0, 1, 2, 4, 8, 9, 10, 11, 12, 13, 14, 15 });
+    chinchou.width = 0.30f; chinchou.height = 0.36f;
+    g_enemies.push_back(chinchou);
+
+    // Squirtle: animacao idle = linha do topo (6 frames de 45x42 px, y=0)
+    // na sheet 713x293. O resto da imagem (corpo recortado, shiny, etc.)
+    // nao e usado.
+    EnemyDef squirtle;
+    squirtle.name = "SQUIRTLE";
+    squirtle.texture = loadTexture("squirtle.png");
+    squirtle.textureWidth = 713.0f; squirtle.textureHeight = 293.0f;
+    squirtle.frames = {
+        {   6, 0, 45, 42 }, {  51, 0, 45, 42 }, {  95, 0, 45, 42 },
+        { 138, 0, 45, 42 }, { 184, 0, 45, 42 }, { 230, 0, 45, 42 }
+    };
+    squirtle.frameDuration = 0.15f;
+    squirtle.width = 0.365f; squirtle.height = 0.34f; // proporcao 45:42
+    g_enemies.push_back(squirtle);
+
+    // Froakie: animacao idle = linha do topo (4 frames de 36x44 px, y=0)
+    // na sheet 511x234.
+    EnemyDef froakie;
+    froakie.name = "FROAKIE";
+    froakie.texture = loadTexture("froakie.png");
+    froakie.textureWidth = 511.0f; froakie.textureHeight = 234.0f;
+    froakie.frames = {
+        {   0, 0, 36, 44 }, {  36, 0, 36, 44 }, {  72, 0, 36, 44 }, { 108, 0, 36, 44 }
+    };
+    froakie.frameDuration = 0.18f;
+    froakie.width = 0.295f; froakie.height = 0.36f; // proporcao 36:44
+    g_enemies.push_back(froakie);
+
+    bool enemiesOk = true;
+    for (const EnemyDef& e : g_enemies) enemiesOk = enemiesOk && e.texture != 0;
+
+    if (g_heartTexture == 0 || !enemiesOk || g_rainTexture == 0)
     {
-        cerr << "Make sure heart.png, chinchou.png and rain.png are beside the executable." << endl;
+        cerr << "Make sure heart.png, rain.png, chinchou.png, squirtle.png and froakie.png are beside the executable." << endl;
         glDeleteVertexArrays(1, &lineVao);
         glDeleteVertexArrays(1, &quadVao);
         glDeleteProgram(colorShader);
@@ -706,7 +743,7 @@ int main()
 
     MenuScreen::Assets menuAssets;
     menuAssets.fontTexture = fontTexture;
-    menuAssets.enemyPreviewTextures = { g_chinchouTexture }; // EM ABERTO: adicionar mais inimigos aqui
+    menuAssets.enemies = g_enemies;
     g_menuScreen.setup(menuAssets, []() { startGame(); });
 
     GameOverScreen::Assets gameOverAssets;
@@ -762,7 +799,7 @@ int main()
     }
 
     glDeleteTextures(1, &g_heartTexture);
-    glDeleteTextures(1, &g_chinchouTexture);
+    for (const EnemyDef& e : g_enemies) glDeleteTextures(1, &e.texture);
     glDeleteTextures(1, &g_rainTexture);
     if (fontTexture != 0) glDeleteTextures(1, &fontTexture);
     glDeleteVertexArrays(1, &lineVao);
