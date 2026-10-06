@@ -26,15 +26,11 @@ constexpr float VIEW_HALF_WIDTH = 1.20f;
 constexpr float VIEW_HALF_HEIGHT = 0.90f;
 constexpr float ATTACK_DELAY = 3.0f;
 
-// Drop interval in seconds by selected difficulty (0=easy, 1=medium, 2=hard).
-constexpr float DROP_SPAWN_INTERVALS[3] = { 0.40f, 0.30f, 0.20f };
-constexpr float FLOOD_RISE_PER_DROP = 0.012f;
-constexpr float FLOOD_MAX_HEIGHT = 0.50f;
-constexpr float FLOOD_DAMAGE_PER_SECOND = 0.12f;
-constexpr float DROP_SIZE = 0.13f;
-constexpr float DROPLET_TEXTURE_SIZE = 0.26f;
-constexpr float DROPLET_WIDTH = 0.09f;
-constexpr float DROPLET_HEIGHT = 0.14f;
+// Intervalo entre gotas (segundos), indexado pela dificuldade selecionada
+// no menu (0=facil, 1=medio, 2=dificil). Quanto menor o intervalo, mais
+// rapido as gotas aparecem - por isso os valores caem conforme a
+// dificuldade sobe. EM ABERTO: numeros de partida, ajustar por playtest.
+constexpr float RAIN_SPAWN_INTERVALS[3] = { 0.40f, 0.30f, 0.20f };
 
 const GLchar* colorVertexShaderSource = R"glsl(
     #version 330 core
@@ -148,7 +144,7 @@ struct Box
     float wallThickness = 0.04f;
 };
 
-struct AttackDrop
+struct RainDrop
 {
     float x;
     float y;
@@ -367,17 +363,19 @@ GameState g_state = GameState::MENU;
 
 Box g_box;
 Heart g_heart;
-vector<AttackDrop> g_attackDrops;
+vector<RainDrop> g_rainDrops;
 mt19937 g_randomGenerator(170);
 uniform_real_distribution<float> g_horizontalSpawn(g_box.left + 0.08f, g_box.right - 0.08f);
 uniform_real_distribution<float> g_speedDistribution(0.65f, 0.85f);
 
 float g_elapsedTime = 0.0f;
-float g_attackSpawnTimer = 0.0f;
-bool g_attackStarted = false;
-float g_floodHeight = 0.0f;
-bool g_floodStarted = false;
+float g_rainSpawnTimer = 0.0f;
+bool g_rainStarted = false;
 float g_health = 1.0f;
+
+// Terremoto (mecanica de boss): relogio ate o proximo e tempo restante do tremor.
+float g_quakeClock = 0.0f;
+float g_quakeRemaining = 0.0f;
 
 double g_playStartTime = 0.0;
 double g_survivalTime = 0.0;
@@ -386,7 +384,6 @@ double g_survivalTime = 0.0;
 GLuint g_heartTexture = 0;
 vector<EnemyDef> g_enemies; // indice = MenuScreen::enemyIndex()
 GLuint g_rainTexture = 0;
-GLuint g_dropletTexture = 0;
 
 MenuScreen g_menuScreen;
 GameOverScreen g_gameOverScreen;
@@ -395,24 +392,16 @@ GameOverScreen g_gameOverScreen;
 // gameplay, ja que o jogo usa apenas teclado).
 const vector<Button>* g_activeButtons = nullptr;
 
-float floodSurfaceAt(float x, float elapsedTime)
-{
-    const float floorY = g_box.bottom + g_box.wallThickness;
-    const float waveAmplitude = min(0.02f, g_floodHeight * 0.25f);
-    return floorY + g_floodHeight +
-           sin(x * 8.0f + elapsedTime * 3.0f) * waveAmplitude;
-}
-
 void resetGame()
 {
     g_heart = Heart{};
-    g_attackDrops.clear();
+    g_rainDrops.clear();
     g_elapsedTime = 0.0f;
-    g_attackSpawnTimer = 0.0f;
-    g_attackStarted = false;
-    g_floodHeight = 0.0f;
-    g_floodStarted = false;
+    g_rainSpawnTimer = 0.0f;
+    g_rainStarted = false;
     g_health = 1.0f;
+    g_quakeClock = 0.0f;
+    g_quakeRemaining = 0.0f;
     g_playStartTime = glfwGetTime();
 }
 
@@ -448,15 +437,29 @@ void updateGame(GLFWwindow* window, float deltaTime)
 {
     g_elapsedTime += deltaTime;
 
-    const bool squirtleAttack =
-        g_enemies[g_menuScreen.enemyIndex()].name == "SQUIRTLE";
-
     // Indice de dificuldade vindo do menu (0=facil, 1=medio, 2=dificil).
     const int difficultyIndex = std::clamp(g_menuScreen.difficulty(), 0, 2);
-    const float effectiveSpawnInterval = DROP_SPAWN_INTERVALS[difficultyIndex];
+    const float effectiveSpawnInterval = RAIN_SPAWN_INTERVALS[difficultyIndex];
 
-    // Drop speed scales with difficulty, matching the shared spawn cadence.
+    // EM ABERTO: a velocidade das gotas continua usando um multiplicador
+    // aproximado (nao uma tabela fixa como o intervalo de spawn). Se
+    // quiserem o mesmo controle explicito por numero aqui, o padrao seria
+    // igual ao de cima: um array RAIN_SPEED_MULTIPLIERS[3] indexado por
+    // difficultyIndex, no lugar da formula abaixo.
     const float speedMultiplier = 1.0f + 0.35f * (difficultyIndex - 1);
+
+    // Mecanica especial do boss: terremoto periodico (so afeta a camera).
+    const EnemyDef& boss = g_enemies[g_menuScreen.enemyIndex()];
+    if (boss.quakeInterval > 0.0f)
+    {
+        g_quakeClock += deltaTime;
+        if (g_quakeClock >= boss.quakeInterval)
+        {
+            g_quakeClock -= boss.quakeInterval;
+            g_quakeRemaining = boss.quakeDuration;
+        }
+        g_quakeRemaining = max(0.0f, g_quakeRemaining - deltaTime);
+    }
 
     const float oldX = g_heart.x;
     const float oldY = g_heart.y;
@@ -496,17 +499,17 @@ void updateGame(GLFWwindow* window, float deltaTime)
 
     if (g_elapsedTime >= ATTACK_DELAY)
     {
-        if (!g_attackStarted)
+        if (!g_rainStarted)
         {
-            g_attackStarted = true;
-            g_attackSpawnTimer = effectiveSpawnInterval;
+            g_rainStarted = true;
+            g_rainSpawnTimer = effectiveSpawnInterval;
         }
 
-        g_attackSpawnTimer += deltaTime;
-        while (g_attackSpawnTimer >= effectiveSpawnInterval)
+        g_rainSpawnTimer += deltaTime;
+        while (g_rainSpawnTimer >= effectiveSpawnInterval)
         {
-            g_attackSpawnTimer -= effectiveSpawnInterval;
-            g_attackDrops.push_back({
+            g_rainSpawnTimer -= effectiveSpawnInterval;
+            g_rainDrops.push_back({
                 g_horizontalSpawn(g_randomGenerator),
                 g_box.top + 0.16f,
                 g_speedDistribution(g_randomGenerator) * speedMultiplier
@@ -514,47 +517,30 @@ void updateGame(GLFWwindow* window, float deltaTime)
         }
     }
 
-    for (auto drop = g_attackDrops.begin(); drop != g_attackDrops.end();)
+    for (auto drop = g_rainDrops.begin(); drop != g_rainDrops.end();)
     {
         drop->y -= drop->speed * deltaTime;
         drop->age += deltaTime;
 
-        const float dropWidth = squirtleAttack ? DROPLET_WIDTH : DROP_SIZE;
-        const float dropHeight = squirtleAttack ? DROPLET_HEIGHT : DROP_SIZE;
-        const Hitbox dropHitbox{drop->x - dropWidth / 2.0f,
-                                drop->y - dropHeight / 2.0f,
-                                dropWidth, dropHeight};
+        const float dropSize = 0.13f;
+        const Hitbox dropHitbox{drop->x - dropSize / 2.0f,
+                                drop->y - dropSize / 2.0f,
+                                dropSize, dropSize};
 
+        // Rain intentionally ignores the box walls and only tests against the heart.
         if (checkCollision(heartHitbox, dropHitbox))
         {
             g_health = max(0.0f, g_health - 0.10f);
-            drop = g_attackDrops.erase(drop);
+            drop = g_rainDrops.erase(drop);
         }
-        else if (squirtleAttack &&
-                 drop->y - DROPLET_HEIGHT / 2.0f <=
-                     (g_floodStarted
-                         ? floodSurfaceAt(drop->x, g_elapsedTime)
-                         : g_box.bottom + g_box.wallThickness))
+        else if (drop->y < g_box.bottom - dropSize)
         {
-            g_floodStarted = true;
-            g_floodHeight = min(FLOOD_MAX_HEIGHT,
-                                g_floodHeight + FLOOD_RISE_PER_DROP);
-            drop = g_attackDrops.erase(drop);
-        }
-        else if (!squirtleAttack && drop->y < g_box.bottom - DROP_SIZE)
-        {
-            drop = g_attackDrops.erase(drop);
+            drop = g_rainDrops.erase(drop);
         }
         else
         {
             ++drop;
         }
-    }
-
-    if (squirtleAttack && g_floodStarted &&
-        g_heart.y - g_heart.height / 2.0f < floodSurfaceAt(g_heart.x, g_elapsedTime))
-    {
-        g_health = max(0.0f, g_health - FLOOD_DAMAGE_PER_SECOND * deltaTime);
     }
 
     if (g_health <= 0.0f)
@@ -565,9 +551,6 @@ void updateGame(GLFWwindow* window, float deltaTime)
 
 void renderGame(const RenderContext& ctx)
 {
-    const bool squirtleAttack =
-        g_enemies[g_menuScreen.enemyIndex()].name == "SQUIRTLE";
-
     // Health bar: the filled portion stays anchored to the left edge.
     drawRect(ctx, 0.0f, g_box.bottom - 0.12f, g_box.right - g_box.left, 0.07f,
              0.25f, 0.04f, 0.04f);
@@ -585,44 +568,12 @@ void renderGame(const RenderContext& ctx)
     const EnemyDef& enemy = g_enemies[g_menuScreen.enemyIndex()];
     drawEnemy(ctx, enemy, g_elapsedTime, enemy.x, enemy.y, enemy.width, enemy.height);
 
-    if (g_floodStarted)
+    // Rain is rendered after the box so drops remain visible as they pass through it.
+    for (const RainDrop& drop : g_rainDrops)
     {
-        const float interiorLeft = g_box.left + g_box.wallThickness;
-        const float interiorRight = g_box.right - g_box.wallThickness;
-        const float interiorBottom = g_box.bottom + g_box.wallThickness;
-        constexpr int waveSegments = 48;
-        const float segmentWidth = (interiorRight - interiorLeft) / waveSegments;
-
-        for (int segment = 0; segment < waveSegments; ++segment)
-        {
-            const float x = interiorLeft + (segment + 0.5f) * segmentWidth;
-            const float surfaceY = max(interiorBottom,
-                                       floodSurfaceAt(x, g_elapsedTime));
-            const float waterHeight = surfaceY - interiorBottom;
-            if (waterHeight > 0.0f)
-            {
-                drawRect(ctx, x, interiorBottom + waterHeight / 2.0f,
-                         segmentWidth + 0.002f, waterHeight,
-                         0.08f, 0.40f, 0.82f);
-            }
-        }
-    }
-
-    // Drops render after the box and flood so they remain visible in the arena.
-    for (const AttackDrop& drop : g_attackDrops)
-    {
-        if (squirtleAttack)
-        {
-            drawSpriteCtx(ctx, g_dropletTexture, drop.x, drop.y,
-                          DROPLET_TEXTURE_SIZE, DROPLET_TEXTURE_SIZE,
-                          1, 1, 0, 1.0f, 1.0f, false);
-        }
-        else
-        {
-            const int rainFrame = static_cast<int>(drop.age / 0.08f) % 8;
-            drawSpriteCtx(ctx, g_rainTexture, drop.x, drop.y, DROP_SIZE, DROP_SIZE,
-                         4, 2, rainFrame, 1.0f, 1.0f, false);
-        }
+        const int rainFrame = static_cast<int>(drop.age / 0.08f) % 8;
+        drawSpriteCtx(ctx, g_rainTexture, drop.x, drop.y, 0.13f, 0.13f,
+                     4, 2, rainFrame, 1.0f, 1.0f, false);
     }
 
     drawSpriteCtx(ctx, g_heartTexture, g_heart.x, g_heart.y,
@@ -683,7 +634,7 @@ int main()
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "OpenGL - PokéRune", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "OpenGL - Rain Attack", nullptr, nullptr);
     if (!window)
     {
         cerr << "Could not create GLFW window" << endl;
@@ -713,7 +664,6 @@ int main()
 
     g_heartTexture = loadTexture("heart.png");
     g_rainTexture = loadTexture("rain.png");
-    g_dropletTexture = loadTexture("droplet.png");
 
     // ---- Inimigos (um EnemyDef por boss) ----
     // Todos os PNGs usam fundo 199,225,209 (chroma key padrao do EnemyDef).
@@ -756,13 +706,33 @@ int main()
     froakie.width = 0.295f; froakie.height = 0.36f; // proporcao 36:44
     g_enemies.push_back(froakie);
 
+    // Mudkip: primeira linha do sheet (6 frames, ataque Water Gun no ultimo).
+    // mudkip.png ja e uma versao LIMPA do sheet (so essa linha, fundo
+    // transparente), entao nao usa chroma key. O sprite olha para a direita;
+    // como o boss fica a direita da arena, espelhamos (flipX).
+    EnemyDef mudkip;
+    mudkip.name = "MUDKIP";
+    mudkip.texture = loadTexture("mudkip.png");
+    mudkip.textureWidth = 221.0f; mudkip.textureHeight = 41.0f;
+    mudkip.frames = {
+        {   0, 4, 29, 34 }, {  32, 4, 29, 34 }, {  65, 4, 29, 34 },
+        {  94, 4, 30, 34 }, { 125, 4, 40, 34 }, { 166, 4, 55, 34 }
+    };
+    mudkip.frameDuration = 0.15f;
+    mudkip.useChromaKey = false;
+    mudkip.flipX = true;
+    mudkip.width = 0.29f; mudkip.height = 0.34f; // proporcao 29:34 (frame 0)
+    mudkip.quakeInterval = 5.0f;   // EM ABERTO: ajustar por playtest
+    mudkip.quakeDuration = 0.6f;
+    mudkip.quakeAmplitude = 0.03f;
+    g_enemies.push_back(mudkip);
+
     bool enemiesOk = true;
     for (const EnemyDef& e : g_enemies) enemiesOk = enemiesOk && e.texture != 0;
 
-    if (g_heartTexture == 0 || !enemiesOk || g_rainTexture == 0 ||
-        g_dropletTexture == 0)
+    if (g_heartTexture == 0 || !enemiesOk || g_rainTexture == 0)
     {
-        cerr << "Make sure heart.png, rain.png, droplet.png, chinchou.png, squirtle.png and froakie.png are beside the executable." << endl;
+        cerr << "Make sure heart.png, rain.png, chinchou.png, squirtle.png, froakie.png and mudkip.png are beside the executable." << endl;
         glDeleteVertexArrays(1, &lineVao);
         glDeleteVertexArrays(1, &quadVao);
         glDeleteProgram(colorShader);
@@ -857,7 +827,19 @@ int main()
 
             case GameState::PLAYING:
                 updateGame(window, deltaTime);
-                renderGame(ctx);
+                {
+                    // Tremor de tela: desloca a projecao (translacao em
+                    // clip space = offset em mundo * escala da projecao).
+                    const EnemyDef& boss = g_enemies[g_menuScreen.enemyIndex()];
+                    if (g_quakeRemaining > 0.0f && boss.quakeDuration > 0.0f)
+                    {
+                        const float t = static_cast<float>(glfwGetTime());
+                        const float strength = boss.quakeAmplitude * (g_quakeRemaining / boss.quakeDuration);
+                        projection[12] = strength * sin(t * 70.0f) * projection[0];
+                        projection[13] = strength * cos(t * 83.0f) * projection[5];
+                    }
+                    renderGame(ctx);
+                }
                 break;
 
             case GameState::GAME_OVER:
@@ -871,7 +853,6 @@ int main()
     glDeleteTextures(1, &g_heartTexture);
     for (const EnemyDef& e : g_enemies) glDeleteTextures(1, &e.texture);
     glDeleteTextures(1, &g_rainTexture);
-    glDeleteTextures(1, &g_dropletTexture);
     if (fontTexture != 0) glDeleteTextures(1, &fontTexture);
     glDeleteVertexArrays(1, &lineVao);
     glDeleteVertexArrays(1, &quadVao);
