@@ -727,12 +727,44 @@ int main()
     mudkip.quakeAmplitude = 0.03f;
     g_enemies.push_back(mudkip);
 
+    // ---- Bosses de evolucao 2 e 3 ----
+    // Cada PNG abaixo e uma tira LIMPA gerada a partir do sheet original
+    // (fundo transparente, 1 linha, frames de tamanho uniforme), entao nao
+    // usa chroma key. Todos ja olham para a esquerda (nao precisam de flipX).
+    // addStrip(nome, arquivo, frames, larguraCelula, alturaCelula, seg/frame, alturaNoMundo)
+    auto addStrip = [&](const char* name, const char* file, int n, float cw, float ch,
+                        float frameDuration, float worldHeight) -> EnemyDef&
+    {
+        EnemyDef e;
+        e.name = name;
+        e.texture = loadTexture(file);
+        e.textureWidth = n * cw; e.textureHeight = ch;
+        e.frames = gridFrames(n, 1, e.textureWidth, e.textureHeight, {});
+        e.frameDuration = frameDuration;
+        e.useChromaKey = false;
+        setSizeByHeight(e, worldHeight);
+        e.x = std::min(0.94f, 1.18f - e.width / 2.0f); // nao sair da tela (borda em 1.20)
+        g_enemies.push_back(e);
+        return g_enemies.back();
+    };
+
+    addStrip("MARSHTOMP", "marshtomp.png", 5, 54, 57, 0.18f, 0.36f);   // idx 4
+    addStrip("WARTORTLE", "wartortle.png", 7, 72, 61, 0.14f, 0.38f);   // idx 5
+    // Frogadier: so 2 poses (agachado/em pe) tiradas do sheet da linha do Froakie.
+    addStrip("FROGADIER", "frogadier.png", 2, 75, 83, 0.45f, 0.38f);   // idx 6
+    addStrip("SWAMPERT",  "swampert.png",  13, 76, 60, 0.09f, 0.36f);  // idx 7
+    addStrip("BLASTOISE", "blastoise.png", 10, 56, 54, 0.12f, 0.40f);  // idx 8
+    // Greninja: 1 frame so; o balanco vertical da vida.
+    EnemyDef& greninja = addStrip("GRENINJA", "greninja.png", 1, 112, 75, 1.0f, 0.30f); // idx 9
+    greninja.bobAmplitude = 0.012f;
+    addStrip("LANTURN",   "lanturn.png",   17, 74, 52, 0.10f, 0.32f);  // idx 10
+
     bool enemiesOk = true;
     for (const EnemyDef& e : g_enemies) enemiesOk = enemiesOk && e.texture != 0;
 
     if (g_heartTexture == 0 || !enemiesOk || g_rainTexture == 0)
     {
-        cerr << "Make sure heart.png, rain.png, chinchou.png, squirtle.png, froakie.png and mudkip.png are beside the executable." << endl;
+        cerr << "Make sure heart.png, rain.png, chinchou.png, squirtle.png, froakie.png, mudkip.png and the 7 new boss PNGs are beside the executable." << endl;
         glDeleteVertexArrays(1, &lineVao);
         glDeleteVertexArrays(1, &quadVao);
         glDeleteProgram(colorShader);
@@ -784,6 +816,14 @@ int main()
     MenuScreen::Assets menuAssets;
     menuAssets.fontTexture = fontTexture;
     menuAssets.enemies = g_enemies;
+
+    // Indices em g_enemies: 0=chinchou, 1=squirtle, 2=froakie, 3=mudkip.
+    // FACIL: evolucao 1 de cada linha.
+    menuAssets.enemiesByDifficulty[0] = { 3, 1, 0, 2 }; // Mudkip, Squirtle, Chinchou, Froakie
+    // MEDIO: Marshtomp, Wartortle, Chinchou (repete: so tem 2 estagios), Frogadier.
+    menuAssets.enemiesByDifficulty[1] = { 4, 5, 0, 6 };
+    // DIFICIL: Swampert, Blastoise, Lanturn, Greninja.
+    menuAssets.enemiesByDifficulty[2] = { 7, 8, 10, 9 };
     g_menuScreen.setup(menuAssets, []() { startGame(); });
 
     GameOverScreen::Assets gameOverAssets;

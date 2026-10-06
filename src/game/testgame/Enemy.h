@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,6 +45,10 @@ struct EnemyDef
     float quakeDuration = 0.6f;   // duracao do tremor
     float quakeAmplitude = 0.03f; // deslocamento maximo em unidades de mundo
 
+    // Balanco vertical suave (para bosses de 1 frame so, ex.: Greninja).
+    float bobAmplitude = 0.0f; // unidades de mundo; 0 = desligado
+    float bobSpeed = 3.0f;     // rad/s
+
     // Posicao/tamanho do boss na arena (mundo).
     float x = 0.94f;
     float y = 0.10f;
@@ -65,6 +70,13 @@ inline std::vector<FrameRect> gridFrames(int columns, int rows, float regionPxW,
     else
         for (int i : validFrames) add(i);
     return out;
+}
+
+// Define width a partir de height mantendo a proporcao do primeiro frame.
+inline void setSizeByHeight(EnemyDef& e, float height)
+{
+    e.height = height;
+    e.width = height * (e.frames[0].w / e.frames[0].h);
 }
 
 // Desenha o inimigo no instante "time" (segundos). time=0 -> primeiro frame
@@ -93,7 +105,9 @@ inline void drawEnemy(const RenderContext& ctx, const EnemyDef& e, float time,
     if (e.flipX)
         std::swap(u0, u1);
 
-    drawSpriteUv(ctx, e.texture, cx, y, w, h,
+    const float bob = e.bobAmplitude * std::sin(time * e.bobSpeed);
+
+    drawSpriteUv(ctx, e.texture, cx, y + bob, w, h,
                  u0, f.y / e.textureHeight,
                  u1, (f.y + f.h) / e.textureHeight,
                  e.useChromaKey, e.keyR, e.keyG, e.keyB);

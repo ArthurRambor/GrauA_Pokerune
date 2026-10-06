@@ -24,6 +24,12 @@ public:
         // usa o tamanho deste vetor, entao adicionar um EnemyDef novo no
         // main() ja basta para ele aparecer no menu.
         std::vector<EnemyDef> enemies;
+
+        // Quais inimigos aparecem em cada dificuldade (0=facil, 1=medio,
+        // 2=dificil): cada lista guarda INDICES para o vetor "enemies".
+        // O carrossel so mostra os da dificuldade selecionada. Um mesmo
+        // indice pode aparecer em mais de uma dificuldade (ex.: Chinchou).
+        std::vector<int> enemiesByDifficulty[3];
     };
 
     void setup(const Assets& assets, std::function<void()> onPlay)
@@ -73,8 +79,8 @@ public:
                 0.3f, 0.3f, 0.3f,
                 "<<ARROW_PREV>>",
                 [this]() {
-                    int count = static_cast<int>(m_assets.enemies.size());
-                    m_enemyIndex = (m_enemyIndex - 1 + count) % count;
+                    int count = tierSize();
+                    m_tierPos = (m_tierPos - 1 + count) % count;
                 }
             });
             m_buttons.push_back(Button{
@@ -82,8 +88,8 @@ public:
                 0.3f, 0.3f, 0.3f,
                 "<<ARROW_NEXT>>",
                 [this]() {
-                    int count = static_cast<int>(m_assets.enemies.size());
-                    m_enemyIndex = (m_enemyIndex + 1) % count;
+                    int count = tierSize();
+                    m_tierPos = (m_tierPos + 1) % count;
                 }
             });
         }
@@ -98,7 +104,7 @@ public:
                 x, -0.30f, 0.4f, 0.10f,
                 active ? 0.85f : 0.25f, active ? 0.65f : 0.25f, 0.10f,
                 diffNames[i],
-                [this, i]() { m_difficulty = i; rebuildButtons(); }
+                [this, i]() { m_difficulty = i; m_tierPos = 0; rebuildButtons(); }
             });
         }
     }
@@ -119,7 +125,7 @@ public:
         {
             // Preview estatico: frame 0 (time = 0) do inimigo selecionado,
             // mantendo a proporcao do sprite (altura fixa 0.3).
-            const EnemyDef& enemy = m_assets.enemies[m_enemyIndex];
+            const EnemyDef& enemy = m_assets.enemies[enemyIndex()];
             const float previewHeight = 0.3f;
             const float previewWidth = previewHeight * (enemy.width / enemy.height);
             drawEnemy(ctx, enemy, 0.0f, 0.0f, -0.05f, previewWidth, previewHeight);
@@ -151,15 +157,31 @@ public:
     const std::vector<Button>& buttons() const { return m_buttons; }
 
     Theme theme() const { return m_theme; }
-    int enemyIndex() const { return m_enemyIndex; }
+    // Indice GLOBAL (no vetor enemies) do inimigo selecionado, ja levando em
+    // conta a dificuldade atual.
+    int enemyIndex() const
+    {
+        const std::vector<int>& tier = m_assets.enemiesByDifficulty[m_difficulty];
+        if (tier.empty())
+            return 0; // EM ABERTO: dificuldade sem inimigos cadastrados -> usa o primeiro
+        return tier[m_tierPos % static_cast<int>(tier.size())];
+    }
     int difficulty() const { return m_difficulty; } // 0=facil, 1=medio, 2=dificil
 
 private:
+    // Quantidade de opcoes no carrossel da dificuldade atual (minimo 1,
+    // para nao dividir por zero no modulo).
+    int tierSize() const
+    {
+        const int n = static_cast<int>(m_assets.enemiesByDifficulty[m_difficulty].size());
+        return n > 0 ? n : 1;
+    }
+
     Assets m_assets;
     std::vector<Button> m_buttons;
     std::function<void()> m_onPlay;
 
     Theme m_theme = Theme::DARK;
-    int m_enemyIndex = 0;
+    int m_tierPos = 0; // posicao dentro da lista da dificuldade atual
     int m_difficulty = 1;
 };
