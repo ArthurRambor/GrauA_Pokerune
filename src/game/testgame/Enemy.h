@@ -45,6 +45,18 @@ struct EnemyDef
     float quakeDuration = 0.6f;   // duracao do tremor
     float quakeAmplitude = 0.03f; // deslocamento maximo em unidades de mundo
 
+    // Mecanica especial: gotas + flood (linha do Squirtle). Intensidade depende
+    // da dificuldade (ver FLOOD_* no testgame.cpp).
+    bool floodAttack = false;
+
+    // Flash bang (linha do Chinchou): a tela pisca em branco periodicamente;
+    // a frequencia aumenta com a dificuldade (ver FLASH_* no testgame.cpp).
+    bool flashAttack = false;
+
+    // Shuriken (linha do Greninja): projetil que quica nas paredes da arena
+    // como pinball; o dano aumenta com a dificuldade (ver SHURIKEN_* no testgame.cpp).
+    bool shurikenAttack = false;
+
     // Balanco vertical suave (para bosses de 1 frame so, ex.: Greninja).
     float bobAmplitude = 0.0f; // unidades de mundo; 0 = desligado
     float bobSpeed = 3.0f;     // rad/s

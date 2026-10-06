@@ -28,6 +28,7 @@ struct RenderContext
     GLint spritePositionLoc = -1;
     GLint spriteSizeLoc = -1;
     GLint spriteUvLoc = -1;
+    GLint spriteAngleLoc = -1; // rotacao do sprite em radianos (shuriken)
     GLint textureLoc = -1;
     GLint chromaKeyLoc = -1;
     GLint chromaKeyColorLoc = -1;
@@ -38,14 +39,14 @@ struct RenderContext
 // Equivalente a antiga drawRectangle(...) do testgame, so que lendo o
 // shader/uniforms do RenderContext em vez de receber uma dezena de parametros.
 inline void drawRect(const RenderContext& ctx, float x, float y, float width,
-                      float height, float red, float green, float blue)
+                      float height, float red, float green, float blue, float alpha = 1.0f)
 {
     glUseProgram(ctx.colorShader);
     glUniformMatrix4fv(ctx.colorProjectionLoc, 1, GL_FALSE, ctx.projection);
     glUniform1i(ctx.useRectangleLoc, GL_TRUE);
     glUniform2f(ctx.rectanglePositionLoc, x, y);
     glUniform2f(ctx.rectangleSizeLoc, width, height);
-    glUniform4f(ctx.colorLoc, red, green, blue, 1.0f);
+    glUniform4f(ctx.colorLoc, red, green, blue, alpha);
     glBindVertexArray(ctx.quadVao);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
@@ -57,7 +58,7 @@ inline void drawSpriteUv(const RenderContext& ctx, GLuint texture, float x, floa
                           float width, float height, float u0, float v0, float u1, float v1,
                           bool useChromaKey,
                           float keyR = 199.0f / 255.0f, float keyG = 225.0f / 255.0f,
-                          float keyB = 209.0f / 255.0f)
+                          float keyB = 209.0f / 255.0f, float angle = 0.0f)
 {
     const GLfloat uv[] = { u0, v0, u1, v1 };
 
@@ -66,6 +67,7 @@ inline void drawSpriteUv(const RenderContext& ctx, GLuint texture, float x, floa
     glUniform2f(ctx.spritePositionLoc, x, y);
     glUniform2f(ctx.spriteSizeLoc, width, height);
     glUniform4fv(ctx.spriteUvLoc, 1, uv);
+    glUniform1f(ctx.spriteAngleLoc, angle);
     glUniform1i(ctx.textureLoc, 0);
     glUniform1i(ctx.chromaKeyLoc, useChromaKey ? GL_TRUE : GL_FALSE);
     glUniform3f(ctx.chromaKeyColorLoc, keyR, keyG, keyB);

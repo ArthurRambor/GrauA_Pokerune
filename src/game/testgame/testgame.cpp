@@ -30,7 +30,36 @@ constexpr float ATTACK_DELAY = 3.0f;
 // no menu (0=facil, 1=medio, 2=dificil). Quanto menor o intervalo, mais
 // rapido as gotas aparecem - por isso os valores caem conforme a
 // dificuldade sobe. EM ABERTO: numeros de partida, ajustar por playtest.
-constexpr float RAIN_SPAWN_INTERVALS[3] = { 0.40f, 0.30f, 0.20f };
+constexpr float DROP_SPAWN_INTERVALS[3] = { 0.40f, 0.30f, 0.20f };
+
+// Mecanica de FLOOD (linha do Squirtle): cada gota que toca o chao sobe o
+// nivel da agua. Tudo indexado pela dificuldade (0=facil, 1=medio, 2=dificil):
+// quanto mais dificil, mais a agua sobe por gota, mais alto ela chega e mais
+// dano causa enquanto o coracao esta submerso. EM ABERTO: ajustar por playtest.
+constexpr float FLOOD_RISE_PER_DROP[3] = { 0.008f, 0.012f, 0.018f };
+constexpr float FLOOD_MAX_HEIGHT[3] = { 0.40f, 0.50f, 0.62f };
+constexpr float FLOOD_DAMAGE_PER_SECOND[3] = { 0.08f, 0.12f, 0.18f };
+constexpr float DROP_SIZE = 0.13f;
+
+// Mecanica de FLASH BANG (linha do Chinchou): intervalo entre piscadas por
+// dificuldade (menor = mais frequente). A tela fica branca por FLASH_HOLD
+// segundos e depois some em FLASH_FADE segundos. EM ABERTO: ajustar por playtest.
+constexpr float FLASH_INTERVALS[3] = { 7.0f, 5.0f, 3.5f };
+constexpr float FLASH_HOLD = 0.25f;
+constexpr float FLASH_FADE = 0.90f;
+
+// Mecanica de SHURIKEN (linha do Greninja): cai e quica nas paredes ate
+// acabar os quiques. Dano por dificuldade (gota normal = 0.10).
+// EM ABERTO: ajustar por playtest.
+constexpr float SHURIKEN_SPAWN_INTERVAL = 3.0f;
+constexpr float SHURIKEN_DAMAGE[3] = { 0.15f, 0.22f, 0.30f };
+constexpr float SHURIKEN_SIZE = 0.14f;
+constexpr float SHURIKEN_HITBOX = 0.10f;
+constexpr float SHURIKEN_SPEED = 0.85f;
+constexpr int SHURIKEN_MAX_BOUNCES = 6;
+constexpr float DROPLET_TEXTURE_SIZE = 0.26f;
+constexpr float DROPLET_WIDTH = 0.09f;
+constexpr float DROPLET_HEIGHT = 0.14f;
 
 const GLchar* colorVertexShaderSource = R"glsl(
     #version 330 core
@@ -74,12 +103,17 @@ const GLchar* spriteVertexShaderSource = R"glsl(
     uniform vec2 spritePosition;
     uniform vec2 spriteSize;
     uniform vec4 spriteUv;
+    uniform float spriteAngle;
 
     out vec2 TexCoord;
 
     void main()
     {
-        vec2 finalPosition = position.xy * spriteSize + spritePosition;
+        vec2 local = position.xy * spriteSize;
+        float c = cos(spriteAngle);
+        float s = sin(spriteAngle);
+        local = vec2(c * local.x - s * local.y, s * local.x + c * local.y);
+        vec2 finalPosition = local + spritePosition;
         gl_Position = projection * vec4(finalPosition, position.z, 1.0);
 
         TexCoord = vec2(
@@ -144,12 +178,22 @@ struct Box
     float wallThickness = 0.04f;
 };
 
-struct RainDrop
+struct AttackDrop
 {
     float x;
     float y;
     float speed;
     float age = 0.0f;
+};
+
+struct Shuriken
+{
+    float x;
+    float y;
+    float vx;
+    float vy;
+    float age = 0.0f;
+    int bounces = 0;
 };
 
 bool checkCollision(const Hitbox& a, const Hitbox& b)
@@ -363,14 +407,20 @@ GameState g_state = GameState::MENU;
 
 Box g_box;
 Heart g_heart;
-vector<RainDrop> g_rainDrops;
+vector<AttackDrop> g_attackDrops;
 mt19937 g_randomGenerator(170);
 uniform_real_distribution<float> g_horizontalSpawn(g_box.left + 0.08f, g_box.right - 0.08f);
 uniform_real_distribution<float> g_speedDistribution(0.65f, 0.85f);
 
 float g_elapsedTime = 0.0f;
-float g_rainSpawnTimer = 0.0f;
-bool g_rainStarted = false;
+float g_attackSpawnTimer = 0.0f;
+bool g_attackStarted = false;
+float g_floodHeight = 0.0f;
+vector<Shuriken> g_shurikens;
+float g_shurikenTimer = 0.0f;
+float g_flashClock = 0.0f;
+float g_flashRemaining = 0.0f; // tempo restante do flash (hold + fade)
+bool g_floodStarted = false;
 float g_health = 1.0f;
 
 // Terremoto (mecanica de boss): relogio ate o proximo e tempo restante do tremor.
@@ -384,6 +434,8 @@ double g_survivalTime = 0.0;
 GLuint g_heartTexture = 0;
 vector<EnemyDef> g_enemies; // indice = MenuScreen::enemyIndex()
 GLuint g_rainTexture = 0;
+GLuint g_dropletTexture = 0;
+GLuint g_shurikenTexture = 0;
 
 MenuScreen g_menuScreen;
 GameOverScreen g_gameOverScreen;
@@ -392,13 +444,27 @@ GameOverScreen g_gameOverScreen;
 // gameplay, ja que o jogo usa apenas teclado).
 const vector<Button>* g_activeButtons = nullptr;
 
+float floodSurfaceAt(float x, float elapsedTime)
+{
+    const float floorY = g_box.bottom + g_box.wallThickness;
+    const float waveAmplitude = min(0.02f, g_floodHeight * 0.25f);
+    return floorY + g_floodHeight +
+           sin(x * 8.0f + elapsedTime * 3.0f) * waveAmplitude;
+}
+
 void resetGame()
 {
     g_heart = Heart{};
-    g_rainDrops.clear();
+    g_attackDrops.clear();
     g_elapsedTime = 0.0f;
-    g_rainSpawnTimer = 0.0f;
-    g_rainStarted = false;
+    g_attackSpawnTimer = 0.0f;
+    g_attackStarted = false;
+    g_floodHeight = 0.0f;
+    g_floodStarted = false;
+    g_shurikens.clear();
+    g_shurikenTimer = 0.0f;
+    g_flashClock = 0.0f;
+    g_flashRemaining = 0.0f;
     g_health = 1.0f;
     g_quakeClock = 0.0f;
     g_quakeRemaining = 0.0f;
@@ -437,9 +503,12 @@ void updateGame(GLFWwindow* window, float deltaTime)
 {
     g_elapsedTime += deltaTime;
 
+    // Bosses da linha do Squirtle usam gotas + flood em vez da chuva normal.
+    const bool floodAttack = g_enemies[g_menuScreen.enemyIndex()].floodAttack;
+
     // Indice de dificuldade vindo do menu (0=facil, 1=medio, 2=dificil).
     const int difficultyIndex = std::clamp(g_menuScreen.difficulty(), 0, 2);
-    const float effectiveSpawnInterval = RAIN_SPAWN_INTERVALS[difficultyIndex];
+    const float effectiveSpawnInterval = DROP_SPAWN_INTERVALS[difficultyIndex];
 
     // EM ABERTO: a velocidade das gotas continua usando um multiplicador
     // aproximado (nao uma tabela fixa como o intervalo de spawn). Se
@@ -499,17 +568,17 @@ void updateGame(GLFWwindow* window, float deltaTime)
 
     if (g_elapsedTime >= ATTACK_DELAY)
     {
-        if (!g_rainStarted)
+        if (!g_attackStarted)
         {
-            g_rainStarted = true;
-            g_rainSpawnTimer = effectiveSpawnInterval;
+            g_attackStarted = true;
+            g_attackSpawnTimer = effectiveSpawnInterval;
         }
 
-        g_rainSpawnTimer += deltaTime;
-        while (g_rainSpawnTimer >= effectiveSpawnInterval)
+        g_attackSpawnTimer += deltaTime;
+        while (g_attackSpawnTimer >= effectiveSpawnInterval)
         {
-            g_rainSpawnTimer -= effectiveSpawnInterval;
-            g_rainDrops.push_back({
+            g_attackSpawnTimer -= effectiveSpawnInterval;
+            g_attackDrops.push_back({
                 g_horizontalSpawn(g_randomGenerator),
                 g_box.top + 0.16f,
                 g_speedDistribution(g_randomGenerator) * speedMultiplier
@@ -517,30 +586,122 @@ void updateGame(GLFWwindow* window, float deltaTime)
         }
     }
 
-    for (auto drop = g_rainDrops.begin(); drop != g_rainDrops.end();)
+    for (auto drop = g_attackDrops.begin(); drop != g_attackDrops.end();)
     {
         drop->y -= drop->speed * deltaTime;
         drop->age += deltaTime;
 
-        const float dropSize = 0.13f;
-        const Hitbox dropHitbox{drop->x - dropSize / 2.0f,
-                                drop->y - dropSize / 2.0f,
-                                dropSize, dropSize};
+        const float dropWidth = floodAttack ? DROPLET_WIDTH : DROP_SIZE;
+        const float dropHeight = floodAttack ? DROPLET_HEIGHT : DROP_SIZE;
+        const Hitbox dropHitbox{drop->x - dropWidth / 2.0f,
+                                drop->y - dropHeight / 2.0f,
+                                dropWidth, dropHeight};
 
-        // Rain intentionally ignores the box walls and only tests against the heart.
+        // Normal: a chuva ignora as paredes da caixa e so testa o coracao.
         if (checkCollision(heartHitbox, dropHitbox))
         {
             g_health = max(0.0f, g_health - 0.10f);
-            drop = g_rainDrops.erase(drop);
+            drop = g_attackDrops.erase(drop);
         }
-        else if (drop->y < g_box.bottom - dropSize)
+        else if (floodAttack &&
+                 drop->y - DROPLET_HEIGHT / 2.0f <=
+                     (g_floodStarted
+                         ? floodSurfaceAt(drop->x, g_elapsedTime)
+                         : g_box.bottom + g_box.wallThickness))
         {
-            drop = g_rainDrops.erase(drop);
+            // Gota tocou a agua (ou o chao): o nivel da flood sobe.
+            g_floodStarted = true;
+            g_floodHeight = min(FLOOD_MAX_HEIGHT[difficultyIndex],
+                                g_floodHeight + FLOOD_RISE_PER_DROP[difficultyIndex]);
+            drop = g_attackDrops.erase(drop);
+        }
+        else if (!floodAttack && drop->y < g_box.bottom - DROP_SIZE)
+        {
+            drop = g_attackDrops.erase(drop);
         }
         else
         {
             ++drop;
         }
+    }
+
+    // ---- Flash bang (linha do Chinchou) ----
+    if (g_enemies[g_menuScreen.enemyIndex()].flashAttack && g_elapsedTime >= ATTACK_DELAY)
+    {
+        g_flashClock += deltaTime;
+        if (g_flashClock >= FLASH_INTERVALS[difficultyIndex])
+        {
+            g_flashClock -= FLASH_INTERVALS[difficultyIndex];
+            g_flashRemaining = FLASH_HOLD + FLASH_FADE;
+        }
+    }
+    g_flashRemaining = max(0.0f, g_flashRemaining - deltaTime);
+
+    // ---- Shuriken (linha do Greninja) ----
+    if (g_enemies[g_menuScreen.enemyIndex()].shurikenAttack && g_elapsedTime >= ATTACK_DELAY)
+    {
+        g_shurikenTimer += deltaTime;
+        if (g_shurikenTimer >= SHURIKEN_SPAWN_INTERVAL)
+        {
+            g_shurikenTimer -= SHURIKEN_SPAWN_INTERVAL;
+            uniform_real_distribution<float> sideways(-0.55f, 0.55f);
+            g_shurikens.push_back({
+                g_horizontalSpawn(g_randomGenerator),
+                g_box.top + 0.16f,
+                sideways(g_randomGenerator),
+                -SHURIKEN_SPEED
+            });
+        }
+    }
+
+    {
+        const float half = SHURIKEN_SIZE / 2.0f;
+        const float minX = g_box.left + g_box.wallThickness + half;
+        const float maxX = g_box.right - g_box.wallThickness - half;
+        const float floorY = g_box.bottom + g_box.wallThickness + half;
+
+        for (auto sh = g_shurikens.begin(); sh != g_shurikens.end();)
+        {
+            sh->x += sh->vx * deltaTime;
+            sh->y += sh->vy * deltaTime;
+            sh->age += deltaTime;
+
+            // Pinball: reflete nas paredes laterais e no chao (so depois de
+            // entrar na caixa; antes disso ela ainda esta caindo de fora).
+            if (sh->y < g_box.top - half)
+            {
+                if (sh->x < minX) { sh->x = minX; sh->vx = fabs(sh->vx); ++sh->bounces; }
+                if (sh->x > maxX) { sh->x = maxX; sh->vx = -fabs(sh->vx); ++sh->bounces; }
+                if (sh->y < floorY) { sh->y = floorY; sh->vy = fabs(sh->vy); ++sh->bounces; }
+            }
+
+            const Hitbox shHitbox{sh->x - SHURIKEN_HITBOX / 2.0f,
+                                  sh->y - SHURIKEN_HITBOX / 2.0f,
+                                  SHURIKEN_HITBOX, SHURIKEN_HITBOX};
+
+            if (checkCollision(heartHitbox, shHitbox))
+            {
+                g_health = max(0.0f, g_health - SHURIKEN_DAMAGE[difficultyIndex]);
+                sh = g_shurikens.erase(sh);
+            }
+            else if (sh->bounces > SHURIKEN_MAX_BOUNCES)
+            {
+                sh = g_shurikens.erase(sh);
+            }
+            else
+            {
+                // Gravidade leve para o movimento parecer de bolinha de pinball.
+                sh->vy -= 0.6f * deltaTime;
+                ++sh;
+            }
+        }
+    }
+
+    // Coracao submerso na flood perde vida continuamente.
+    if (floodAttack && g_floodStarted &&
+        g_heart.y - g_heart.height / 2.0f < floodSurfaceAt(g_heart.x, g_elapsedTime))
+    {
+        g_health = max(0.0f, g_health - FLOOD_DAMAGE_PER_SECOND[difficultyIndex] * deltaTime);
     }
 
     if (g_health <= 0.0f)
@@ -551,6 +712,8 @@ void updateGame(GLFWwindow* window, float deltaTime)
 
 void renderGame(const RenderContext& ctx)
 {
+    const bool floodAttack = g_enemies[g_menuScreen.enemyIndex()].floodAttack;
+
     // Health bar: the filled portion stays anchored to the left edge.
     drawRect(ctx, 0.0f, g_box.bottom - 0.12f, g_box.right - g_box.left, 0.07f,
              0.25f, 0.04f, 0.04f);
@@ -568,16 +731,63 @@ void renderGame(const RenderContext& ctx)
     const EnemyDef& enemy = g_enemies[g_menuScreen.enemyIndex()];
     drawEnemy(ctx, enemy, g_elapsedTime, enemy.x, enemy.y, enemy.width, enemy.height);
 
-    // Rain is rendered after the box so drops remain visible as they pass through it.
-    for (const RainDrop& drop : g_rainDrops)
+    if (g_floodStarted)
     {
-        const int rainFrame = static_cast<int>(drop.age / 0.08f) % 8;
-        drawSpriteCtx(ctx, g_rainTexture, drop.x, drop.y, 0.13f, 0.13f,
-                     4, 2, rainFrame, 1.0f, 1.0f, false);
+        const float interiorLeft = g_box.left + g_box.wallThickness;
+        const float interiorRight = g_box.right - g_box.wallThickness;
+        const float interiorBottom = g_box.bottom + g_box.wallThickness;
+        constexpr int waveSegments = 48;
+        const float segmentWidth = (interiorRight - interiorLeft) / waveSegments;
+
+        for (int segment = 0; segment < waveSegments; ++segment)
+        {
+            const float x = interiorLeft + (segment + 0.5f) * segmentWidth;
+            const float surfaceY = max(interiorBottom, floodSurfaceAt(x, g_elapsedTime));
+            const float waterHeight = surfaceY - interiorBottom;
+            if (waterHeight > 0.0f)
+            {
+                drawRect(ctx, x, interiorBottom + waterHeight / 2.0f,
+                         segmentWidth + 0.002f, waterHeight,
+                         0.08f, 0.40f, 0.82f);
+            }
+        }
+    }
+
+    // Gotas/chuva desenhadas depois da caixa e da flood para ficarem visiveis.
+    for (const AttackDrop& drop : g_attackDrops)
+    {
+        if (floodAttack)
+        {
+            drawSpriteCtx(ctx, g_dropletTexture, drop.x, drop.y,
+                          DROPLET_TEXTURE_SIZE, DROPLET_TEXTURE_SIZE,
+                          1, 1, 0, 1.0f, 1.0f, false);
+        }
+        else
+        {
+            const int rainFrame = static_cast<int>(drop.age / 0.08f) % 8;
+            drawSpriteCtx(ctx, g_rainTexture, drop.x, drop.y, DROP_SIZE, DROP_SIZE,
+                         4, 2, rainFrame, 1.0f, 1.0f, false);
+        }
+    }
+
+    for (const Shuriken& sh : g_shurikens)
+    {
+        drawSpriteUv(ctx, g_shurikenTexture, sh.x, sh.y, SHURIKEN_SIZE, SHURIKEN_SIZE,
+                     0.0f, 0.0f, 1.0f, 1.0f, false,
+                     199.0f / 255.0f, 225.0f / 255.0f, 209.0f / 255.0f,
+                     sh.age * 12.0f); // gira enquanto quica
     }
 
     drawSpriteCtx(ctx, g_heartTexture, g_heart.x, g_heart.y,
                  g_heart.width, g_heart.height, 1, 1, 0, 1.0f, 1.0f, false);
+
+    // Flash bang por cima de tudo: branco total durante FLASH_HOLD e depois
+    // some gradualmente durante FLASH_FADE.
+    if (g_flashRemaining > 0.0f)
+    {
+        const float alpha = min(1.0f, g_flashRemaining / FLASH_FADE);
+        drawRect(ctx, 0.0f, 0.0f, 2.4f, 1.8f, 1.0f, 1.0f, 1.0f, alpha);
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -664,6 +874,8 @@ int main()
 
     g_heartTexture = loadTexture("heart.png");
     g_rainTexture = loadTexture("rain.png");
+    g_dropletTexture = loadTexture("droplet.png");
+    g_shurikenTexture = loadTexture("shuriken.png");
 
     // ---- Inimigos (um EnemyDef por boss) ----
     // Todos os PNGs usam fundo 199,225,209 (chroma key padrao do EnemyDef).
@@ -676,6 +888,7 @@ int main()
     chinchou.textureWidth = 403.0f; chinchou.textureHeight = 183.0f;
     chinchou.frames = gridFrames(4, 4, 240.0f, 183.0f, { 0, 1, 2, 4, 8, 9, 10, 11, 12, 13, 14, 15 });
     chinchou.width = 0.30f; chinchou.height = 0.36f;
+    chinchou.flashAttack = true; // linha do Chinchou: flash bang
     g_enemies.push_back(chinchou);
 
     // Squirtle: animacao idle = linha do topo (6 frames de 45x42 px, y=0)
@@ -690,6 +903,7 @@ int main()
         { 138, 0, 45, 42 }, { 184, 0, 45, 42 }, { 230, 0, 45, 42 }
     };
     squirtle.frameDuration = 0.15f;
+    squirtle.floodAttack = true; // linha do Squirtle: gotas + flood
     squirtle.width = 0.365f; squirtle.height = 0.34f; // proporcao 45:42
     g_enemies.push_back(squirtle);
 
@@ -703,6 +917,7 @@ int main()
         {   0, 0, 36, 44 }, {  36, 0, 36, 44 }, {  72, 0, 36, 44 }, { 108, 0, 36, 44 }
     };
     froakie.frameDuration = 0.18f;
+    froakie.shurikenAttack = true; // linha do Greninja: shuriken
     froakie.width = 0.295f; froakie.height = 0.36f; // proporcao 36:44
     g_enemies.push_back(froakie);
 
@@ -755,25 +970,27 @@ int main()
     marshtomp.quakeInterval = 4.0f;
     marshtomp.quakeDuration = 0.7f;
     marshtomp.quakeAmplitude = 0.04f;
-    addStrip("WARTORTLE", "wartortle.png", 7, 72, 61, 0.14f, 0.38f);   // idx 5
+    addStrip("WARTORTLE", "wartortle.png", 7, 72, 61, 0.14f, 0.38f).floodAttack = true; // idx 5 (linha do Squirtle)
     // Frogadier: so 2 poses (agachado/em pe) tiradas do sheet da linha do Froakie.
-    addStrip("FROGADIER", "frogadier.png", 2, 75, 83, 0.45f, 0.38f);   // idx 6
+    addStrip("FROGADIER", "frogadier.png", 2, 75, 83, 0.45f, 0.38f).shurikenAttack = true; // idx 6 (linha do Greninja)
     EnemyDef& swampert = addStrip("SWAMPERT", "swampert.png", 13, 76, 60, 0.09f, 0.36f); // idx 7
     swampert.quakeInterval = 3.0f;
     swampert.quakeDuration = 0.8f;
     swampert.quakeAmplitude = 0.05f;
-    addStrip("BLASTOISE", "blastoise.png", 10, 56, 54, 0.12f, 0.40f);  // idx 8
+    addStrip("BLASTOISE", "blastoise.png", 10, 56, 54, 0.12f, 0.40f).floodAttack = true; // idx 8 (linha do Squirtle)
     // Greninja: 1 frame so; o balanco vertical da vida.
     EnemyDef& greninja = addStrip("GRENINJA", "greninja.png", 1, 112, 75, 1.0f, 0.30f); // idx 9
     greninja.bobAmplitude = 0.012f;
-    addStrip("LANTURN",   "lanturn.png",   17, 74, 52, 0.10f, 0.32f);  // idx 10
+    greninja.shurikenAttack = true;
+    addStrip("LANTURN", "lanturn.png", 17, 74, 52, 0.10f, 0.32f).flashAttack = true; // idx 10 (linha do Chinchou)
 
     bool enemiesOk = true;
     for (const EnemyDef& e : g_enemies) enemiesOk = enemiesOk && e.texture != 0;
 
-    if (g_heartTexture == 0 || !enemiesOk || g_rainTexture == 0)
+    if (g_heartTexture == 0 || !enemiesOk || g_rainTexture == 0 || g_dropletTexture == 0 ||
+        g_shurikenTexture == 0)
     {
-        cerr << "Make sure heart.png, rain.png, chinchou.png, squirtle.png, froakie.png, mudkip.png and the 7 new boss PNGs are beside the executable." << endl;
+        cerr << "Make sure heart.png, rain.png, droplet.png, shuriken.png, chinchou.png, squirtle.png, froakie.png, mudkip.png and the 7 new boss PNGs are beside the executable." << endl;
         glDeleteVertexArrays(1, &lineVao);
         glDeleteVertexArrays(1, &quadVao);
         glDeleteProgram(colorShader);
@@ -797,6 +1014,7 @@ int main()
     const GLint spritePositionLoc = glGetUniformLocation(spriteShader, "spritePosition");
     const GLint spriteSizeLoc = glGetUniformLocation(spriteShader, "spriteSize");
     const GLint spriteUvLoc = glGetUniformLocation(spriteShader, "spriteUv");
+    const GLint spriteAngleLoc = glGetUniformLocation(spriteShader, "spriteAngle");
     const GLint textureLoc = glGetUniformLocation(spriteShader, "texture1");
     const GLint chromaKeyLoc = glGetUniformLocation(spriteShader, "useChromaKey");
     const GLint chromaKeyColorLoc = glGetUniformLocation(spriteShader, "chromaKeyColor");
@@ -816,6 +1034,7 @@ int main()
     ctx.spritePositionLoc = spritePositionLoc;
     ctx.spriteSizeLoc = spriteSizeLoc;
     ctx.spriteUvLoc = spriteUvLoc;
+    ctx.spriteAngleLoc = spriteAngleLoc;
     ctx.textureLoc = textureLoc;
     ctx.chromaKeyLoc = chromaKeyLoc;
     ctx.chromaKeyColorLoc = chromaKeyColorLoc;
@@ -902,6 +1121,8 @@ int main()
     glDeleteTextures(1, &g_heartTexture);
     for (const EnemyDef& e : g_enemies) glDeleteTextures(1, &e.texture);
     glDeleteTextures(1, &g_rainTexture);
+    glDeleteTextures(1, &g_dropletTexture);
+    glDeleteTextures(1, &g_shurikenTexture);
     if (fontTexture != 0) glDeleteTextures(1, &fontTexture);
     glDeleteVertexArrays(1, &lineVao);
     glDeleteVertexArrays(1, &quadVao);
