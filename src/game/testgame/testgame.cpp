@@ -634,7 +634,7 @@ int main()
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "OpenGL - Rain Attack", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "OpenGL - PokéRune", nullptr, nullptr);
     if (!window)
     {
         cerr << "Could not create GLFW window" << endl;
@@ -748,11 +748,20 @@ int main()
         return g_enemies.back();
     };
 
-    addStrip("MARSHTOMP", "marshtomp.png", 5, 54, 57, 0.18f, 0.36f);   // idx 4
+    // Linha do Mudkip: o terremoto fica mais frequente e mais forte a cada
+    // evolucao (Mudkip 5s/0.03 -> Marshtomp 4s/0.04 -> Swampert 3s/0.05).
+    // EM ABERTO: valores de partida, ajustar por playtest.
+    EnemyDef& marshtomp = addStrip("MARSHTOMP", "marshtomp.png", 5, 54, 57, 0.18f, 0.36f); // idx 4
+    marshtomp.quakeInterval = 4.0f;
+    marshtomp.quakeDuration = 0.7f;
+    marshtomp.quakeAmplitude = 0.04f;
     addStrip("WARTORTLE", "wartortle.png", 7, 72, 61, 0.14f, 0.38f);   // idx 5
     // Frogadier: so 2 poses (agachado/em pe) tiradas do sheet da linha do Froakie.
     addStrip("FROGADIER", "frogadier.png", 2, 75, 83, 0.45f, 0.38f);   // idx 6
-    addStrip("SWAMPERT",  "swampert.png",  13, 76, 60, 0.09f, 0.36f);  // idx 7
+    EnemyDef& swampert = addStrip("SWAMPERT", "swampert.png", 13, 76, 60, 0.09f, 0.36f); // idx 7
+    swampert.quakeInterval = 3.0f;
+    swampert.quakeDuration = 0.8f;
+    swampert.quakeAmplitude = 0.05f;
     addStrip("BLASTOISE", "blastoise.png", 10, 56, 54, 0.12f, 0.40f);  // idx 8
     // Greninja: 1 frame so; o balanco vertical da vida.
     EnemyDef& greninja = addStrip("GRENINJA", "greninja.png", 1, 112, 75, 1.0f, 0.30f); // idx 9
