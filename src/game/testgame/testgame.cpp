@@ -131,6 +131,8 @@ const GLchar* spriteFragmentShaderSource = R"glsl(
     uniform sampler2D texture1;
     uniform bool useChromaKey;
     uniform vec3 chromaKeyColor;
+    uniform float spriteAlpha;   
+    uniform float spriteWhiten;
 
     out vec4 color;
 
@@ -144,13 +146,11 @@ const GLchar* spriteFragmentShaderSource = R"glsl(
         if (useChromaKey && distance(sampledColor.rgb, chromaKeyColor) < 0.08)
             discard;
 
-        color = sampledColor;
+        color = vec4(mix(sampledColor.rgb, vec3(1.0), spriteWhiten),
+             sampledColor.a * spriteAlpha);
     }
 )glsl";
 
-// ---------------------------------------------------------------------
-// Estruturas do jogo (inalteradas em relacao a versao anterior)
-// ---------------------------------------------------------------------
 
 struct Hitbox
 {
@@ -167,7 +167,10 @@ struct Heart
     float width = 0.10f;
     float height = 0.10f;
     float speed = 0.80f;
+    float hurtTimer = 0.0f;   
 };
+
+
 
 struct Box
 {
@@ -442,6 +445,15 @@ GameOverScreen g_gameOverScreen;
 
 // Ponteiro para os botoes da tela atualmente ativa (nullptr durante o
 // gameplay, ja que o jogo usa apenas teclado).
+
+constexpr float HURT_FLASH_DURATION = 0.2f;
+
+void damageHeart(float amount)
+{
+    g_health = max(0.0f, g_health - amount);
+    g_heart.hurtTimer = HURT_FLASH_DURATION;
+}
+
 const vector<Button>* g_activeButtons = nullptr;
 
 float floodSurfaceAt(float x, float elapsedTime)
@@ -502,6 +514,7 @@ void endGame()
 void updateGame(GLFWwindow* window, float deltaTime)
 {
     g_elapsedTime += deltaTime;
+    g_heart.hurtTimer = max(0.0f, g_heart.hurtTimer - deltaTime);
 
     // Bosses da linha do Squirtle usam gotas + flood em vez da chuva normal.
     const bool floodAttack = g_enemies[g_menuScreen.enemyIndex()].floodAttack;
@@ -600,7 +613,7 @@ void updateGame(GLFWwindow* window, float deltaTime)
         // Normal: a chuva ignora as paredes da caixa e so testa o coracao.
         if (checkCollision(heartHitbox, dropHitbox))
         {
-            g_health = max(0.0f, g_health - 0.10f);
+            damageHeart(0.10f);
             drop = g_attackDrops.erase(drop);
         }
         else if (floodAttack &&
@@ -681,7 +694,7 @@ void updateGame(GLFWwindow* window, float deltaTime)
 
             if (checkCollision(heartHitbox, shHitbox))
             {
-                g_health = max(0.0f, g_health - SHURIKEN_DAMAGE[difficultyIndex]);
+                damageHeart(SHURIKEN_DAMAGE[difficultyIndex]);
                 sh = g_shurikens.erase(sh);
             }
             else if (sh->bounces > SHURIKEN_MAX_BOUNCES)
@@ -778,8 +791,14 @@ void renderGame(const RenderContext& ctx)
                      sh.age * 12.0f); // gira enquanto quica
     }
 
-    drawSpriteCtx(ctx, g_heartTexture, g_heart.x, g_heart.y,
-                 g_heart.width, g_heart.height, 1, 1, 0, 1.0f, 1.0f, false);
+const float t = g_heart.hurtTimer / HURT_FLASH_DURATION;   // 1 -> 0 em 0,2 s
+drawSpriteUv(ctx, g_heartTexture, g_heart.x, g_heart.y,
+             g_heart.width, g_heart.height,
+             0.0f, 0.0f, 1.0f, 1.0f, false,
+             199.0f / 255.0f, 225.0f / 255.0f, 209.0f / 255.0f,
+             0.0f,                 // angle
+             1.0f - 0.5f * t,      // alpha: cai até 50% e volta
+             t);                   // whiten: branco total e volta ao normal
 
     // Flash bang por cima de tudo: branco total durante FLASH_HOLD e depois
     // some gradualmente durante FLASH_FADE.
@@ -1038,7 +1057,8 @@ int main()
     ctx.textureLoc = textureLoc;
     ctx.chromaKeyLoc = chromaKeyLoc;
     ctx.chromaKeyColorLoc = chromaKeyColorLoc;
-
+    ctx.spriteAlphaLoc  = glGetUniformLocation(spriteShader, "spriteAlpha");
+    ctx.spriteWhitenLoc = glGetUniformLocation(spriteShader, "spriteWhiten");
     // ---- Configura as telas ----
 
     MenuScreen::Assets menuAssets;

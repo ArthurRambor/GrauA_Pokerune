@@ -32,6 +32,8 @@ struct RenderContext
     GLint textureLoc = -1;
     GLint chromaKeyLoc = -1;
     GLint chromaKeyColorLoc = -1;
+    GLint spriteAlphaLoc = -1;
+    GLint spriteWhitenLoc = -1;
 
     const GLfloat* projection = nullptr; // atualizado a cada frame no loop principal
 };
@@ -58,7 +60,7 @@ inline void drawSpriteUv(const RenderContext& ctx, GLuint texture, float x, floa
                           float width, float height, float u0, float v0, float u1, float v1,
                           bool useChromaKey,
                           float keyR = 199.0f / 255.0f, float keyG = 225.0f / 255.0f,
-                          float keyB = 209.0f / 255.0f, float angle = 0.0f)
+                          float keyB = 209.0f / 255.0f, float angle = 0.0f, float alpha = 1.0f, float whiten = 0.0f)
 {
     const GLfloat uv[] = { u0, v0, u1, v1 };
 
@@ -71,7 +73,8 @@ inline void drawSpriteUv(const RenderContext& ctx, GLuint texture, float x, floa
     glUniform1i(ctx.textureLoc, 0);
     glUniform1i(ctx.chromaKeyLoc, useChromaKey ? GL_TRUE : GL_FALSE);
     glUniform3f(ctx.chromaKeyColorLoc, keyR, keyG, keyB);
-
+    glUniform1f(ctx.spriteAlphaLoc, alpha);
+    glUniform1f(ctx.spriteWhitenLoc, whiten);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
     glBindVertexArray(ctx.quadVao);

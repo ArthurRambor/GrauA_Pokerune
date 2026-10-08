@@ -62,7 +62,7 @@ struct EnemyDef
     float bobSpeed = 3.0f;     // rad/s
 
     // Posicao/tamanho do boss na arena (mundo).
-    float x = 0.94f;
+    float x = 1.20f;
     float y = 0.10f;
     float width = 0.30f;
     float height = 0.36f;
