@@ -119,7 +119,7 @@ public:
         // temas, ou o font.png precisa ter contraste com os dois fundos,
         // ou o shader de sprite passa a aceitar um tint de cor (uniform
         // extra multiplicando o resultado da textura).
-        drawTextCentered(ctx, m_assets.fontTexture, "RAIN ATTACK", 0.0f, 0.65f, 0.10f, 0.13f);
+        drawTextCentered(ctx, m_assets.fontTexture, "POKERUNE", 0.0f, 0.65f, 0.10f, 0.13f);
 
         if (!m_assets.enemies.empty())
         {
