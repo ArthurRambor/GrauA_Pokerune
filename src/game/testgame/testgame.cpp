@@ -44,8 +44,11 @@ constexpr float DROP_SIZE = 0.13f;
 // Mecanica de FLASH BANG (linha do Chinchou): intervalo entre piscadas por
 // dificuldade (menor = mais frequente). A tela fica branca por FLASH_HOLD
 // segundos e depois some em FLASH_FADE segundos. EM ABERTO: ajustar por playtest.
-constexpr float FLASH_INTERVALS[3] = { 7.0f, 5.0f, 3.5f };
-constexpr float FLASH_HOLD = 0.25f;
+//                                        facil  medio  dificil
+constexpr float BEAM_SPAWN_INTERVALS[3] = { 1.8f,  1.2f,  0.7f };
+constexpr float BEAM_SPEED  = 1.1f;
+constexpr float BEAM_SIZE   = 0.07f;
+constexpr float BEAM_HITBOX = 0.07f;constexpr float FLASH_HOLD = 0.25f;
 constexpr float FLASH_FADE = 0.90f;
 
 // Mecanica de SHURIKEN (linha do Greninja): cai e quica nas paredes ate
@@ -60,6 +63,7 @@ constexpr int SHURIKEN_MAX_BOUNCES = 6;
 constexpr float DROPLET_TEXTURE_SIZE = 0.26f;
 constexpr float DROPLET_WIDTH = 0.09f;
 constexpr float DROPLET_HEIGHT = 0.14f;
+
 
 const GLchar* colorVertexShaderSource = R"glsl(
     #version 330 core
@@ -198,6 +202,15 @@ struct Shuriken
     float age = 0.0f;
     int bounces = 0;
 };
+
+struct LanturnBeam
+{
+    float x, y;
+    float vx, vy;
+};
+
+vector<LanturnBeam> g_beams;
+float g_beamTimer = 0.0f;
 
 bool checkCollision(const Hitbox& a, const Hitbox& b)
 {
@@ -428,6 +441,7 @@ float g_health = 1.0f;
 
 // Terremoto (mecanica de boss): relogio ate o proximo e tempo restante do tremor.
 float g_quakeClock = 0.0f;
+bool g_screenFlipped = false;
 float g_quakeRemaining = 0.0f;
 
 double g_playStartTime = 0.0;
@@ -475,11 +489,13 @@ void resetGame()
     g_floodStarted = false;
     g_shurikens.clear();
     g_shurikenTimer = 0.0f;
-    g_flashClock = 0.0f;
+    g_beams.clear();
+    g_beamTimer = 0.0f;
     g_flashRemaining = 0.0f;
     g_health = 1.0f;
     g_quakeClock = 0.0f;
     g_quakeRemaining = 0.0f;
+    g_screenFlipped = false;
     g_playStartTime = glfwGetTime();
 }
 
@@ -539,6 +555,7 @@ void updateGame(GLFWwindow* window, float deltaTime)
         {
             g_quakeClock -= boss.quakeInterval;
             g_quakeRemaining = boss.quakeDuration;
+            g_screenFlipped = !g_screenFlipped;   
         }
         g_quakeRemaining = max(0.0f, g_quakeRemaining - deltaTime);
     }
@@ -638,14 +655,45 @@ void updateGame(GLFWwindow* window, float deltaTime)
         }
     }
 
-    // ---- Flash bang (linha do Chinchou) ----
-    if (g_enemies[g_menuScreen.enemyIndex()].flashAttack && g_elapsedTime >= ATTACK_DELAY)
+        // ---- Raio do Lanturn: o flash bang so ocorre ao acertar o coracao ----
+    if (boss.flashAttack && g_elapsedTime >= ATTACK_DELAY)
     {
-        g_flashClock += deltaTime;
-        if (g_flashClock >= FLASH_INTERVALS[difficultyIndex])
+        g_beamTimer += deltaTime;
+        while (g_beamTimer >= BEAM_SPAWN_INTERVALS[difficultyIndex])
         {
-            g_flashClock -= FLASH_INTERVALS[difficultyIndex];
-            g_flashRemaining = FLASH_HOLD + FLASH_FADE;
+            g_beamTimer -= BEAM_SPAWN_INTERVALS[difficultyIndex];
+
+            // Mira na posicao do coracao no momento do disparo.
+            float dx = g_heart.x - boss.x;
+            float dy = g_heart.y - boss.y;
+            float len = sqrt(dx * dx + dy * dy);
+            if (len < 0.001f) len = 0.001f;
+
+            g_beams.push_back({ boss.x, boss.y,
+                                dx / len * BEAM_SPEED, dy / len * BEAM_SPEED });
+        }
+    }
+
+    for (auto b = g_beams.begin(); b != g_beams.end();)
+    {
+        b->x += b->vx * deltaTime;
+        b->y += b->vy * deltaTime;
+
+        const Hitbox beamHitbox{ b->x - BEAM_HITBOX / 2.0f, b->y - BEAM_HITBOX / 2.0f,
+                                 BEAM_HITBOX, BEAM_HITBOX };
+
+        if (checkCollision(heartHitbox, beamHitbox))
+        {
+            g_flashRemaining = FLASH_HOLD + FLASH_FADE;   // flash so aqui
+            b = g_beams.erase(b);
+        }
+        else if (fabs(b->x) > VIEW_HALF_WIDTH + 0.2f || fabs(b->y) > VIEW_HALF_HEIGHT + 0.2f)
+        {
+            b = g_beams.erase(b);   // saiu da tela sem acertar
+        }
+        else
+        {
+            ++b;
         }
     }
     g_flashRemaining = max(0.0f, g_flashRemaining - deltaTime);
@@ -782,7 +830,11 @@ void renderGame(const RenderContext& ctx)
                          4, 2, rainFrame, 1.0f, 1.0f, false);
         }
     }
-
+    for (const LanturnBeam& b : g_beams)
+    {
+        drawRect(ctx, b.x, b.y, BEAM_SIZE * 1.8f, BEAM_SIZE * 1.8f, 0.2f, 0.6f, 1.0f, 0.35f); // halo
+        drawRect(ctx, b.x, b.y, BEAM_SIZE, BEAM_SIZE, 1.0f, 1.0f, 0.6f);                      // nucleo
+    }   
     for (const Shuriken& sh : g_shurikens)
     {
         drawSpriteUv(ctx, g_shurikenTexture, sh.x, sh.y, SHURIKEN_SIZE, SHURIKEN_SIZE,
@@ -956,7 +1008,8 @@ int main()
     mudkip.useChromaKey = false;
     mudkip.flipX = true;
     mudkip.width = 0.29f; mudkip.height = 0.34f; // proporcao 29:34 (frame 0)
-    mudkip.quakeInterval = 5.0f;   // EM ABERTO: ajustar por playtest
+    mudkip.quakeInterval = 5.0f;   
+    mudkip.quakeFlipX = true;
     mudkip.quakeDuration = 0.6f;
     mudkip.quakeAmplitude = 0.03f;
     g_enemies.push_back(mudkip);
@@ -987,6 +1040,7 @@ int main()
     // EM ABERTO: valores de partida, ajustar por playtest.
     EnemyDef& marshtomp = addStrip("MARSHTOMP", "marshtomp.png", 5, 54, 57, 0.18f, 0.36f); // idx 4
     marshtomp.quakeInterval = 4.0f;
+    marshtomp.quakeFlipX = true;
     marshtomp.quakeDuration = 0.7f;
     marshtomp.quakeAmplitude = 0.04f;
     addStrip("WARTORTLE", "wartortle.png", 7, 72, 61, 0.14f, 0.38f).floodAttack = true; // idx 5 (linha do Squirtle)
@@ -994,6 +1048,7 @@ int main()
     addStrip("FROGADIER", "frogadier.png", 2, 75, 83, 0.45f, 0.38f).shurikenAttack = true; // idx 6 (linha do Greninja)
     EnemyDef& swampert = addStrip("SWAMPERT", "swampert.png", 13, 76, 60, 0.09f, 0.36f); // idx 7
     swampert.quakeInterval = 3.0f;
+    swampert.quakeFlipY = true;
     swampert.quakeDuration = 0.8f;
     swampert.quakeAmplitude = 0.05f;
     addStrip("BLASTOISE", "blastoise.png", 10, 56, 54, 0.12f, 0.40f).floodAttack = true; // idx 8 (linha do Squirtle)
@@ -1116,9 +1171,15 @@ int main()
             case GameState::PLAYING:
                 updateGame(window, deltaTime);
                 {
+                    const EnemyDef& boss = g_enemies[g_menuScreen.enemyIndex()];
+
+                    if (g_screenFlipped)
+                    {
+                        if (boss.quakeFlipX) projection[0] = -projection[0];
+                        if (boss.quakeFlipY) projection[5] = -projection[5];
+                    }
                     // Tremor de tela: desloca a projecao (translacao em
                     // clip space = offset em mundo * escala da projecao).
-                    const EnemyDef& boss = g_enemies[g_menuScreen.enemyIndex()];
                     if (g_quakeRemaining > 0.0f && boss.quakeDuration > 0.0f)
                     {
                         const float t = static_cast<float>(glfwGetTime());

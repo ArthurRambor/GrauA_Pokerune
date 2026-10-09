@@ -44,6 +44,8 @@ struct EnemyDef
     float quakeInterval = 0.0f;   // segundos entre terremotos
     float quakeDuration = 0.6f;   // duracao do tremor
     float quakeAmplitude = 0.03f; // deslocamento maximo em unidades de mundo
+    bool quakeFlipX = false;   
+    bool quakeFlipY = false;
 
     // Mecanica especial: gotas + flood (linha do Squirtle). Intensidade depende
     // da dificuldade (ver FLOOD_* no testgame.cpp).
