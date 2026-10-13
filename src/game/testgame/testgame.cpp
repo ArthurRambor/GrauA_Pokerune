@@ -26,24 +26,16 @@ constexpr float VIEW_HALF_WIDTH = 1.20f;
 constexpr float VIEW_HALF_HEIGHT = 0.90f;
 constexpr float ATTACK_DELAY = 3.0f;
 
-// Intervalo entre gotas (segundos), indexado pela dificuldade selecionada
-// no menu (0=facil, 1=medio, 2=dificil). Quanto menor o intervalo, mais
-// rapido as gotas aparecem - por isso os valores caem conforme a
-// dificuldade sobe. EM ABERTO: numeros de partida, ajustar por playtest.
+// Intervalo entre gotas (segundos)
+//                                       (0=facil, 1=medio, 2=dificil)
 constexpr float DROP_SPAWN_INTERVALS[3] = { 0.40f, 0.30f, 0.20f };
 
-// Mecanica de FLOOD (linha do Squirtle): cada gota que toca o chao sobe o
-// nivel da agua. Tudo indexado pela dificuldade (0=facil, 1=medio, 2=dificil):
-// quanto mais dificil, mais a agua sobe por gota, mais alto ela chega e mais
-// dano causa enquanto o coracao esta submerso. EM ABERTO: ajustar por playtest.
+// Mecanica de FLOOD (linha do Squirtle): 
+//                                       (0=facil, 1=medio, 2=dificil):
 constexpr float FLOOD_RISE_PER_DROP[3] = { 0.008f, 0.012f, 0.018f };
 constexpr float FLOOD_MAX_HEIGHT[3] = { 0.40f, 0.50f, 0.62f };
 constexpr float FLOOD_DAMAGE_PER_SECOND[3] = { 0.08f, 0.12f, 0.18f };
 constexpr float DROP_SIZE = 0.13f;
-
-// Mecanica de FLASH BANG (linha do Chinchou): intervalo entre piscadas por
-// dificuldade (menor = mais frequente). A tela fica branca por FLASH_HOLD
-// segundos e depois some em FLASH_FADE segundos. EM ABERTO: ajustar por playtest.
 //                                        facil  medio  dificil
 constexpr float BEAM_SPAWN_INTERVALS[3] = { 1.8f,  1.2f,  0.7f };
 constexpr float BEAM_SPEED  = 1.1f;
@@ -51,9 +43,7 @@ constexpr float BEAM_SIZE   = 0.07f;
 constexpr float BEAM_HITBOX = 0.07f;constexpr float FLASH_HOLD = 0.25f;
 constexpr float FLASH_FADE = 0.90f;
 
-// Mecanica de SHURIKEN (linha do Greninja): cai e quica nas paredes ate
-// acabar os quiques. Dano por dificuldade (gota normal = 0.10).
-// EM ABERTO: ajustar por playtest.
+// Mecanica de SHURIKEN (linha do Greninja): 
 constexpr float SHURIKEN_SPAWN_INTERVAL = 3.0f;
 constexpr float SHURIKEN_DAMAGE[3] = { 0.15f, 0.22f, 0.30f };
 constexpr float SHURIKEN_SIZE = 0.14f;
@@ -220,9 +210,7 @@ bool checkCollision(const Hitbox& a, const Hitbox& b)
            a.y + a.height > b.y;
 }
 
-// ---------------------------------------------------------------------
-// Utilitarios de shader/geometria/textura (inalterados)
-// ---------------------------------------------------------------------
+// Utilitarios de shader/geometria/textura 
 
 GLuint compileShader(GLenum type, const GLchar* source, const char* name)
 {
@@ -317,10 +305,7 @@ GLuint setupQuadGeometry()
     return vao;
 }
 
-// Triangulo apontando para a direita, dentro do espaco -0.5..0.5 (mesmo
-// espaco local que rectanglePosition/rectangleSize escalam). Usado pelas
-// setas do carrossel de inimigos (ver drawArrow em RenderContext.h) -
-// espelhar horizontalmente e so passar rectangleSize.x negativo.
+// retangulo para o carrossel
 GLuint setupTriangleGeometry()
 {
     const GLfloat vertices[] =
@@ -370,9 +355,7 @@ GLuint loadTexture(const char* filename)
     return texture;
 }
 
-// ---------------------------------------------------------------------
-// Projecao + conversao de coordenadas de tela (pixel) para mundo
-// ---------------------------------------------------------------------
+// Projecao para mundo
 
 float g_pixelsPerWorldUnit = 1.0f;
 
@@ -393,9 +376,6 @@ void makeProjection(int framebufferWidth, int framebufferHeight, GLfloat* projec
     projection[15] = 1.0f;
 }
 
-// Converte um clique (coordenadas de tela, origem no canto superior
-// esquerdo, como o GLFW reporta) para coordenadas de mundo centradas
-// (o mesmo sistema usado por heart.x/y, box.left/right, etc.).
 void screenToWorld(GLFWwindow* window, double screenX, double screenY, float& worldX, float& worldY)
 {
     int fbWidth = 0, fbHeight = 0;
@@ -414,9 +394,8 @@ void screenToWorld(GLFWwindow* window, double screenX, double screenY, float& wo
     worldY = (float)((fbHeight / 2.0 - py) / g_pixelsPerWorldUnit); // Y invertido: cursor cresce pra baixo
 }
 
-// ---------------------------------------------------------------------
-// Estado global do jogo (maquina de estados + entidades)
-// ---------------------------------------------------------------------
+
+// Estado  do jogo
 
 enum class GameState { MENU, PLAYING, GAME_OVER };
 GameState g_state = GameState::MENU;
@@ -435,11 +414,11 @@ float g_floodHeight = 0.0f;
 vector<Shuriken> g_shurikens;
 float g_shurikenTimer = 0.0f;
 float g_flashClock = 0.0f;
-float g_flashRemaining = 0.0f; // tempo restante do flash (hold + fade)
+float g_flashRemaining = 0.0f; 
 bool g_floodStarted = false;
 float g_health = 1.0f;
 
-// Terremoto (mecanica de boss): relogio ate o proximo e tempo restante do tremor.
+// Terremoto 
 float g_quakeClock = 0.0f;
 bool g_screenFlipped = false;
 float g_quakeRemaining = 0.0f;
@@ -447,18 +426,14 @@ float g_quakeRemaining = 0.0f;
 double g_playStartTime = 0.0;
 double g_survivalTime = 0.0;
 
-// Texturas carregadas uma vez em main() e reaproveitadas pelas telas/jogo.
 GLuint g_heartTexture = 0;
-vector<EnemyDef> g_enemies; // indice = MenuScreen::enemyIndex()
+vector<EnemyDef> g_enemies; 
 GLuint g_rainTexture = 0;
 GLuint g_dropletTexture = 0;
 GLuint g_shurikenTexture = 0;
 
 MenuScreen g_menuScreen;
 GameOverScreen g_gameOverScreen;
-
-// Ponteiro para os botoes da tela atualmente ativa (nullptr durante o
-// gameplay, ja que o jogo usa apenas teclado).
 
 constexpr float HURT_FLASH_DURATION = 0.2f;
 
@@ -503,7 +478,7 @@ void startGame()
 {
     resetGame();
     g_state = GameState::PLAYING;
-    g_activeButtons = nullptr; // sem botoes durante a partida
+    g_activeButtons = nullptr; 
 }
 
 void goToMenu()
@@ -522,31 +497,23 @@ void endGame()
     g_activeButtons = &g_gameOverScreen.buttons();
 }
 
-// ---------------------------------------------------------------------
-// Update e render do gameplay em si (mesma logica de antes, so que
-// isolada em funcoes para caber na maquina de estados)
-// ---------------------------------------------------------------------
+
 
 void updateGame(GLFWwindow* window, float deltaTime)
 {
     g_elapsedTime += deltaTime;
     g_heart.hurtTimer = max(0.0f, g_heart.hurtTimer - deltaTime);
 
-    // Bosses da linha do Squirtle usam gotas + flood em vez da chuva normal.
+    // Bosses da linha do Squirtle usam gotas + flood 
     const bool floodAttack = g_enemies[g_menuScreen.enemyIndex()].floodAttack;
 
     // Indice de dificuldade vindo do menu (0=facil, 1=medio, 2=dificil).
     const int difficultyIndex = std::clamp(g_menuScreen.difficulty(), 0, 2);
     const float effectiveSpawnInterval = DROP_SPAWN_INTERVALS[difficultyIndex];
 
-    // EM ABERTO: a velocidade das gotas continua usando um multiplicador
-    // aproximado (nao uma tabela fixa como o intervalo de spawn). Se
-    // quiserem o mesmo controle explicito por numero aqui, o padrao seria
-    // igual ao de cima: um array RAIN_SPEED_MULTIPLIERS[3] indexado por
-    // difficultyIndex, no lugar da formula abaixo.
     const float speedMultiplier = 1.0f + 0.35f * (difficultyIndex - 1);
 
-    // Mecanica especial do boss: terremoto periodico (so afeta a camera).
+    // Mecanica: terremoto periodico .
     const EnemyDef& boss = g_enemies[g_menuScreen.enemyIndex()];
     if (boss.quakeInterval > 0.0f)
     {
@@ -627,7 +594,6 @@ void updateGame(GLFWwindow* window, float deltaTime)
                                 drop->y - dropHeight / 2.0f,
                                 dropWidth, dropHeight};
 
-        // Normal: a chuva ignora as paredes da caixa e so testa o coracao.
         if (checkCollision(heartHitbox, dropHitbox))
         {
             damageHeart(0.10f);
@@ -639,7 +605,6 @@ void updateGame(GLFWwindow* window, float deltaTime)
                          ? floodSurfaceAt(drop->x, g_elapsedTime)
                          : g_box.bottom + g_box.wallThickness))
         {
-            // Gota tocou a agua (ou o chao): o nivel da flood sobe.
             g_floodStarted = true;
             g_floodHeight = min(FLOOD_MAX_HEIGHT[difficultyIndex],
                                 g_floodHeight + FLOOD_RISE_PER_DROP[difficultyIndex]);
@@ -655,7 +620,6 @@ void updateGame(GLFWwindow* window, float deltaTime)
         }
     }
 
-        // ---- Raio do Lanturn: o flash bang so ocorre ao acertar o coracao ----
     if (boss.flashAttack && g_elapsedTime >= ATTACK_DELAY)
     {
         g_beamTimer += deltaTime;
@@ -663,7 +627,7 @@ void updateGame(GLFWwindow* window, float deltaTime)
         {
             g_beamTimer -= BEAM_SPAWN_INTERVALS[difficultyIndex];
 
-            // Mira na posicao do coracao no momento do disparo.
+            // Mira no coracao.
             float dx = g_heart.x - boss.x;
             float dy = g_heart.y - boss.y;
             float len = sqrt(dx * dx + dy * dy);
@@ -689,7 +653,7 @@ void updateGame(GLFWwindow* window, float deltaTime)
         }
         else if (fabs(b->x) > VIEW_HALF_WIDTH + 0.2f || fabs(b->y) > VIEW_HALF_HEIGHT + 0.2f)
         {
-            b = g_beams.erase(b);   // saiu da tela sem acertar
+            b = g_beams.erase(b);   
         }
         else
         {
@@ -698,7 +662,7 @@ void updateGame(GLFWwindow* window, float deltaTime)
     }
     g_flashRemaining = max(0.0f, g_flashRemaining - deltaTime);
 
-    // ---- Shuriken (linha do Greninja) ----
+    // Shuriken (linha do Greninja) 
     if (g_enemies[g_menuScreen.enemyIndex()].shurikenAttack && g_elapsedTime >= ATTACK_DELAY)
     {
         g_shurikenTimer += deltaTime;
@@ -727,8 +691,7 @@ void updateGame(GLFWwindow* window, float deltaTime)
             sh->y += sh->vy * deltaTime;
             sh->age += deltaTime;
 
-            // Pinball: reflete nas paredes laterais e no chao (so depois de
-            // entrar na caixa; antes disso ela ainda esta caindo de fora).
+            // Pinball
             if (sh->y < g_box.top - half)
             {
                 if (sh->x < minX) { sh->x = minX; sh->vx = fabs(sh->vx); ++sh->bounces; }
@@ -751,14 +714,14 @@ void updateGame(GLFWwindow* window, float deltaTime)
             }
             else
             {
-                // Gravidade leve para o movimento parecer de bolinha de pinball.
+                
                 sh->vy -= 0.6f * deltaTime;
                 ++sh;
             }
         }
     }
 
-    // Coracao submerso na flood perde vida continuamente.
+    // Coracao  na flood perde vida
     if (floodAttack && g_floodStarted &&
         g_heart.y - g_heart.height / 2.0f < floodSurfaceAt(g_heart.x, g_elapsedTime))
     {
@@ -787,8 +750,7 @@ void renderGame(const RenderContext& ctx)
 
     drawBoxOutline(ctx);
 
-    // Inimigo escolhido no menu, com a animacao propria dele (grade,
-    // frames validos e velocidade definidos no EnemyDef).
+    // Inimigo com a animacao 
     const EnemyDef& enemy = g_enemies[g_menuScreen.enemyIndex()];
     drawEnemy(ctx, enemy, g_elapsedTime, enemy.x, enemy.y, enemy.width, enemy.height);
 
@@ -814,7 +776,7 @@ void renderGame(const RenderContext& ctx)
         }
     }
 
-    // Gotas/chuva desenhadas depois da caixa e da flood para ficarem visiveis.
+  
     for (const AttackDrop& drop : g_attackDrops)
     {
         if (floodAttack)
@@ -852,8 +814,7 @@ drawSpriteUv(ctx, g_heartTexture, g_heart.x, g_heart.y,
              1.0f - 0.5f * t,      // alpha: cai até 50% e volta
              t);                   // whiten: branco total e volta ao normal
 
-    // Flash bang por cima de tudo: branco total durante FLASH_HOLD e depois
-    // some gradualmente durante FLASH_FADE.
+    // Flash bang LANTURN
     if (g_flashRemaining > 0.0f)
     {
         const float alpha = min(1.0f, g_flashRemaining / FLASH_FADE);
@@ -861,9 +822,7 @@ drawSpriteUv(ctx, g_heartTexture, g_heart.x, g_heart.y,
     }
 }
 
-// ---------------------------------------------------------------------
 // Callbacks de input
-// ---------------------------------------------------------------------
 
 void key_callback(GLFWwindow* window, int key, int, int action, int)
 {
@@ -895,9 +854,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int)
     }
 }
 
-// ---------------------------------------------------------------------
-// main
-// ---------------------------------------------------------------------
+
 
 int main()
 {
@@ -948,11 +905,7 @@ int main()
     g_dropletTexture = loadTexture("droplet.png");
     g_shurikenTexture = loadTexture("shuriken.png");
 
-    // ---- Inimigos (um EnemyDef por boss) ----
-    // Todos os PNGs usam fundo 199,225,209 (chroma key padrao do EnemyDef).
-
-    // Chinchou: grade 4x4 na area util de 240x183 px (403x183 no total);
-    // so 12 das 16 celulas tem pose.
+    // ---- Inimigos 
     EnemyDef chinchou;
     chinchou.name = "CHINCHOU";
     chinchou.texture = loadTexture("chinchou.png");
@@ -962,9 +915,7 @@ int main()
     chinchou.flashAttack = true; // linha do Chinchou: flash bang
     g_enemies.push_back(chinchou);
 
-    // Squirtle: animacao idle = linha do topo (6 frames de 45x42 px, y=0)
-    // na sheet 713x293. O resto da imagem (corpo recortado, shiny, etc.)
-    // nao e usado.
+    // Squirtle: 
     EnemyDef squirtle;
     squirtle.name = "SQUIRTLE";
     squirtle.texture = loadTexture("squirtle.png");
@@ -978,8 +929,7 @@ int main()
     squirtle.width = 0.365f; squirtle.height = 0.34f; // proporcao 45:42
     g_enemies.push_back(squirtle);
 
-    // Froakie: animacao idle = linha do topo (4 frames de 36x44 px, y=0)
-    // na sheet 511x234.
+    // Froakie: 
     EnemyDef froakie;
     froakie.name = "FROAKIE";
     froakie.texture = loadTexture("froakie.png");
@@ -992,10 +942,7 @@ int main()
     froakie.width = 0.295f; froakie.height = 0.36f; // proporcao 36:44
     g_enemies.push_back(froakie);
 
-    // Mudkip: primeira linha do sheet (6 frames, ataque Water Gun no ultimo).
-    // mudkip.png ja e uma versao LIMPA do sheet (so essa linha, fundo
-    // transparente), entao nao usa chroma key. O sprite olha para a direita;
-    // como o boss fica a direita da arena, espelhamos (flipX).
+    // Mudkip: 
     EnemyDef mudkip;
     mudkip.name = "MUDKIP";
     mudkip.texture = loadTexture("mudkip.png");
@@ -1014,11 +961,7 @@ int main()
     mudkip.quakeAmplitude = 0.03f;
     g_enemies.push_back(mudkip);
 
-    // ---- Bosses de evolucao 2 e 3 ----
-    // Cada PNG abaixo e uma tira LIMPA gerada a partir do sheet original
-    // (fundo transparente, 1 linha, frames de tamanho uniforme), entao nao
-    // usa chroma key. Todos ja olham para a esquerda (nao precisam de flipX).
-    // addStrip(nome, arquivo, frames, larguraCelula, alturaCelula, seg/frame, alturaNoMundo)
+    // ---- Bosses de evolucao 2 e 3 
     auto addStrip = [&](const char* name, const char* file, int n, float cw, float ch,
                         float frameDuration, float worldHeight) -> EnemyDef&
     {
@@ -1035,16 +978,14 @@ int main()
         return g_enemies.back();
     };
 
-    // Linha do Mudkip: o terremoto fica mais frequente e mais forte a cada
-    // evolucao (Mudkip 5s/0.03 -> Marshtomp 4s/0.04 -> Swampert 3s/0.05).
-    // EM ABERTO: valores de partida, ajustar por playtest.
+    // Marshtomp: 
     EnemyDef& marshtomp = addStrip("MARSHTOMP", "marshtomp.png", 5, 54, 57, 0.18f, 0.36f); // idx 4
     marshtomp.quakeInterval = 4.0f;
     marshtomp.quakeFlipX = true;
     marshtomp.quakeDuration = 0.7f;
     marshtomp.quakeAmplitude = 0.04f;
     addStrip("WARTORTLE", "wartortle.png", 7, 72, 61, 0.14f, 0.38f).floodAttack = true; // idx 5 (linha do Squirtle)
-    // Frogadier: so 2 poses (agachado/em pe) tiradas do sheet da linha do Froakie.
+    // Frogadier: 
     addStrip("FROGADIER", "frogadier.png", 2, 75, 83, 0.45f, 0.38f).shurikenAttack = true; // idx 6 (linha do Greninja)
     EnemyDef& swampert = addStrip("SWAMPERT", "swampert.png", 13, 76, 60, 0.09f, 0.36f); // idx 7
     swampert.quakeInterval = 3.0f;
@@ -1052,7 +993,7 @@ int main()
     swampert.quakeDuration = 0.8f;
     swampert.quakeAmplitude = 0.05f;
     addStrip("BLASTOISE", "blastoise.png", 10, 56, 54, 0.12f, 0.40f).floodAttack = true; // idx 8 (linha do Squirtle)
-    // Greninja: 1 frame so; o balanco vertical da vida.
+    // Greninja: 
     EnemyDef& greninja = addStrip("GRENINJA", "greninja.png", 1, 112, 75, 1.0f, 0.30f); // idx 9
     greninja.bobAmplitude = 0.012f;
     greninja.shurikenAttack = true;
@@ -1073,9 +1014,7 @@ int main()
         return -1;
     }
 
-    // Fonte bitmap (atlas 6x7: A-Z, 0-9, "!", ".", espaco, "?") usada pelo
-    // titulo do menu, tempo de sobrevivencia e labels dos botoes.
-    // Precisa estar ao lado do executavel, igual heart.png/chinchou.png/rain.png.
+
     GLuint fontTexture = loadTexture("font.png");
 
     const GLint colorProjectionLoc = glGetUniformLocation(colorShader, "projection");
@@ -1120,10 +1059,9 @@ int main()
     menuAssets.fontTexture = fontTexture;
     menuAssets.enemies = g_enemies;
 
-    // Indices em g_enemies: 0=chinchou, 1=squirtle, 2=froakie, 3=mudkip.
     // FACIL: evolucao 1 de cada linha.
     menuAssets.enemiesByDifficulty[0] = { 3, 1, 0, 2 }; // Mudkip, Squirtle, Chinchou, Froakie
-    // MEDIO: Marshtomp, Wartortle, Chinchou (repete: so tem 2 estagios), Frogadier.
+    // MEDIO: Marshtomp, Wartortle, Chinchou, Frogadier.
     menuAssets.enemiesByDifficulty[1] = { 4, 5, 0, 6 };
     // DIFICIL: Swampert, Blastoise, Lanturn, Greninja.
     menuAssets.enemiesByDifficulty[2] = { 7, 8, 10, 9 };
@@ -1135,7 +1073,7 @@ int main()
         []() { startGame(); },
         []() { goToMenu(); });
 
-    goToMenu(); // estado inicial: MENU, com os botoes do menu ativos
+    goToMenu(); // estado inicial: MENU
 
     double previousTime = glfwGetTime();
 
@@ -1178,8 +1116,7 @@ int main()
                         if (boss.quakeFlipX) projection[0] = -projection[0];
                         if (boss.quakeFlipY) projection[5] = -projection[5];
                     }
-                    // Tremor de tela: desloca a projecao (translacao em
-                    // clip space = offset em mundo * escala da projecao).
+                    // Tremor de tela: 
                     if (g_quakeRemaining > 0.0f && boss.quakeDuration > 0.0f)
                     {
                         const float t = static_cast<float>(glfwGetTime());
