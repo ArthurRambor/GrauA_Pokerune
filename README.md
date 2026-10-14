@@ -92,6 +92,10 @@ Recomendamos que você crie um repositório próprio, estruturado com subdiretó
 > Você pode alterar a estrutura dos diretórios, mas sempre que o fizer, adicione-os corretamente no CMakelists.txt.
 > Cada diretório dentro de `src/` pode conter um arquivo `README.md` com informações específicas sobre a atividade ou exercício implementado.
 
+Vídeo de Apresentação do trabalho
+
+🎬 Vídeo: [[link](https://youtu.be/aWUiBYNT2ug)]
+
 Consulte os seguintes materiais para ajuda adicional:
 - [Exemplo de README.md de repositório](misc/Template_README_Repositorio.md)
 - [Exemplo de README.md para cada projeto](misc/Template_README_Projeto.md)
