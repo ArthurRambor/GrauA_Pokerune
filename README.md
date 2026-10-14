@@ -94,7 +94,7 @@ Recomendamos que você crie um repositório próprio, estruturado com subdiretó
 
 Vídeo de Apresentação do trabalho
 
-🎬 Vídeo: [[link](https://youtu.be/aWUiBYNT2ug)]
+🎬 Vídeo: https://youtu.be/3Oskv5VCns8
 
 Consulte os seguintes materiais para ajuda adicional:
 - [Exemplo de README.md de repositório](misc/Template_README_Repositorio.md)
